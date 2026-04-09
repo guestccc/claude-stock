@@ -1,0 +1,10 @@
+2026-04-03 16:16:47.176 | INFO     | __main__:main:48 - ============================================================
+2026-04-03 16:16:47.178 | INFO     | __main__:main:49 - 多因子选股系统启动
+2026-04-03 16:16:47.178 | INFO     | __main__:main:50 - 运行模式: full
+2026-04-03 16:16:47.178 | INFO     | __main__:main:51 - ============================================================
+2026-04-03 16:16:47.179 | INFO     | __main__:main:85 - 模式: 完整流程
+2026-04-03 16:16:47.179 | INFO     | __main__:main:91 - 
+[Step 1/6] 数据获取...
+2026-04-03 16:16:47.179 | INFO     | data.downloader:get_stock_list:34 - 获取A股股票列表...
+2026-04-03 16:16:53.403 | ERROR    | data.downloader:get_stock_list:60 - 获取股票列表失败: Length mismatch: Expected axis has 6 elements, new values have 3 elements
+2026-04-03 16:16:53.404 | ERROR    | __main__:main:137 - 执行出错: 'code'

@@ -1,0 +1,40 @@
+# 多因子选股系统配置
+# 数据源配置
+data_source:
+  provider: "akshare"  # akshare 或 tushare
+  cache_dir: "./data/cache"
+  cache_type: "parquet"  # parquet 或 hdf5
+
+# 市场配置
+market:
+  index_code: "000300.SH"  # 沪深300作为基准
+  stock_pool: "all_a"  # all_a = 全A股, hs300 = 沪深300, zz500 = 中证500
+  exclude_st: true  # 排除ST股票
+  exclude_new_stock: true  # 排除次新股（上市不满一年）
+  min_market_cap: 10_000_000_000  # 最小市值（10亿）
+
+# 回测配置
+backtest:
+  start_date: "20180101"
+  end_date: "20231231"
+  rebalance_freq: "monthly"  # monthly, weekly, daily
+  commission_rate: 0.0003  # 佣金费率（万三）
+  stamp_tax: 0.001  # 印花税（千一，卖出时收取）
+  slippage: 0.001  # 滑点（千分之一）
+
+# 组合配置
+portfolio:
+  top_n: 50  # 持仓数量
+  weight_method: "equal"  # equal, ic_weighted, risk_parity
+  max_single_weight: 0.05  # 单只股票最大权重
+
+# 因子配置
+factors:
+  standardization: "zscore"  # zscore, minmax, rank
+  neutralize_industry: true  # 行业中性化
+  neutralize_size: true  # 市值中性化
+
+# 分析配置
+analysis:
+  ic_window: 20  # IC计算滚动窗口（月数）
+  backtest_window: 60  # 回测窗口（月数）

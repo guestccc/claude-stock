@@ -1,0 +1,146 @@
+# 因子配置
+# 定义所有可用因子及其参数
+
+# 基础因子 - 规模、估值、质量
+fundamental:
+  # 规模因子
+  - name: "ln_market_cap"
+    display_name: "对数市值"
+    category: "size"
+    direction: -1  # -1 表示越小越好（小市值溢价）
+
+  - name: "circulating_market_cap"
+    display_name: "流通市值"
+    category: "size"
+    direction: -1
+
+  # 估值因子
+  - name: "pe_ratio"
+    display_name: "市盈率"
+    category: "value"
+    direction: -1  # 低估值
+
+  - name: "pb_ratio"
+    display_name: "市净率"
+    category: "value"
+    direction: -1
+
+  - name: "ps_ratio"
+    display_name: "市销率"
+    category: "value"
+    direction: -1
+
+  # 质量因子
+  - name: "roe"
+    display_name: "净资产收益率"
+    category: "quality"
+    direction: 1  # 1 表示越大越好
+
+  - name: "roa"
+    display_name: "资产收益率"
+    category: "quality"
+    direction: 1
+
+  - name: "gross_margin"
+    display_name: "毛利率"
+    category: "quality"
+    direction: 1
+
+# 技术因子 - 动量、波动、流动性
+technical:
+  # 动量因子
+  - name: "momentum_1m"
+    display_name: "1月动量"
+    category: "momentum"
+    direction: 1
+    params:
+      period: 20  # 交易日
+
+  - name: "momentum_3m"
+    display_name: "3月动量"
+    category: "momentum"
+    direction: 1
+    params:
+      period: 60
+
+  - name: "momentum_6m"
+    display_name: "6月动量"
+    category: "momentum"
+    direction: 1
+    params:
+      period: 120
+
+  - name: "momentum_12m"
+    display_name: "12月动量"
+    category: "momentum"
+    direction: 1
+    params:
+      period: 240
+
+  # 波动因子
+  - name: "volatility_20d"
+    display_name: "20日波动率"
+    category: "volatility"
+    direction: -1  # 低波动效应
+
+  - name: "volatility_60d"
+    display_name: "60日波动率"
+    category: "volatility"
+    direction: -1
+
+  - name: "beta"
+    display_name: "市场Beta"
+    category: "volatility"
+    direction: 0  # 0 表示中性
+
+  # 流动性因子
+  - name: "turnover_rate"
+    display_name: "换手率"
+    category: "liquidity"
+    direction: 0
+
+  - name: "amihud_illiquidity"
+    display_name: "Amihud非流动性"
+    category: "liquidity"
+    direction: -1
+
+  # 均线偏离
+  - name: "ma偏离度"
+    display_name: "MA20偏离度"
+    category: "technical"
+    direction: 0
+
+# 财务因子 - 成长、财务健康、现金流
+financial:
+  # 成长因子
+  - name: "revenue_growth"
+    display_name: "营收增长率"
+    category: "growth"
+    direction: 1
+
+  - name: "profit_growth"
+    display_name: "净利润增长率"
+    category: "growth"
+    direction: 1
+
+  - name: "book_value_growth"
+    display_name: "净资产增长率"
+    category: "growth"
+    direction: 1
+
+  # 财务健康
+  - name: "debt_ratio"
+    display_name: "资产负债率"
+    category: "health"
+    direction: -1  # 低负债
+
+  - name: "current_ratio"
+    display_name: "流动比率"
+    category: "health"
+    direction: 1
+
+  # 现金流
+  - name: "cash_flow_ratio"
+    display_name: "经营现金流/净利润"
+    category: "cash_flow"
+    direction: 1
