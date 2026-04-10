@@ -43,6 +43,7 @@ python3 -m a_stock_fetcher.cli [命令] [参数]
 | `daily-update [N]` | 增量更新日线数据 |
 | `daily-update --codes 600519,000001` | 增量更新指定股票 |
 | `daily-full <CODE>` | 获取指定股票所有历史日线数据 |
+| `daily-full-all` | 获取所有股票所有历史日线数据 |
 | `minute [N]` | 更新 1 分钟分时数据，可指定 N 限制数量 |
 | `financial [N]` | 更新财务数据，默认 100 条 |
 | `boards` | 更新概念/行业板块 |
@@ -55,10 +56,11 @@ python3 -m a_stock_fetcher.cli [命令] [参数]
 ```bash
 cd /Users/jschen/Desktop/person/claude-study
 python3 -m a_stock_fetcher.cli init                              # 初始化
-python3 -m a_stock_fetcher.cli daily-update                     # 增量更新日线（全部）
-python3 -m a_stock_fetcher.cli daily-update 100                  # 增量更新前100只
+python3 -m a_stock_fetcher.cli daily-update                       # 增量更新日线（全部）
+python3 -m a_stock_fetcher.cli daily-update 100                   # 增量更新前100只
 python3 -m a_stock_fetcher.cli daily-update --codes 600519,000001 # 增量更新指定股票
 python3 -m a_stock_fetcher.cli daily-full 600519                  # 获取贵州茅台所有历史数据
+python3 -m a_stock_fetcher.cli daily-full-all                   # 获取所有股票所有历史数据
 python3 -m a_stock_fetcher.cli scheduler                          # 启动定时任务
 python3 -m a_stock_fetcher.cli status                             # 查看调度器状态
 ```

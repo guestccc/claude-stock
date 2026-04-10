@@ -16,6 +16,8 @@ from .fetchers import (
     fetch_concept,
     fetch_industry,
     fetch_all_boards,
+    is_enabled,
+    get_stock_type,
 )
 from .scheduler import start_scheduler, run_scheduler, get_scheduler
 
@@ -42,4 +44,7 @@ __all__ = [
     'start_scheduler',
     'run_scheduler',
     'get_scheduler',
+    # 过滤
+    'is_enabled',
+    'get_stock_type',
 ]

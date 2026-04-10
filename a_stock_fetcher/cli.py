@@ -14,6 +14,7 @@ from a_stock_fetcher import (
     fetch_stock_daily_full_history,
     run_scheduler,
     get_scheduler,
+    is_enabled,
 )
 
 
@@ -26,6 +27,7 @@ HELP_TEXT = """
   daily-update [N]       - 增量更新日线数据（全量或限制N只）
   daily-update --codes 600519,000001 - 增量更新指定股票
   daily-full <CODE>       - 获取指定股票所有历史日线数据
+  daily-full-all         - 获取所有股票所有历史日线数据
   minute [N]             - 更新1分钟分时数据，可指定N限制数量
   financial [N]          - 更新财务数据，默认100条
   boards                 - 更新概念/行业板块
@@ -38,6 +40,7 @@ HELP_TEXT = """
   python3 -m a_stock_fetcher.cli daily-update 100                  # 增量更新前100只
   python3 -m a_stock_fetcher.cli daily-update --codes 600519,000001 # 增量更新指定股票
   python3 -m a_stock_fetcher.cli daily-full 600519                # 获取贵州茅台所有历史数据
+  python3 -m a_stock_fetcher.cli daily-full-all                   # 获取所有股票所有历史数据
   python3 -m a_stock_fetcher.cli scheduler                        # 启动定时任务
   python3 -m a_stock_fetcher.cli status                            # 查看状态
 """
@@ -93,15 +96,67 @@ def main():
 
     elif cmd == "daily-full":
         if not args or args[0].startswith('--'):
-            print("用法: python cli.py daily-full <股票代码>")
-            print("示例: python cli.py daily-full 600519")
+            print("用法: python3 -m a_stock_fetcher.cli daily-full <股票代码>")
+            print("示例: python3 -m a_stock_fetcher.cli daily-full 600519")
             return
         code = args[0].strip()
         print(f"=" * 50)
         print(f"获取 {code} 所有历史日线数据...")
         print(f"=" * 50)
         result = fetch_stock_daily_full_history(code)
-        print(f"结果: {result}")
+        if result == "已有完整数据":
+            print("已有完整数据，无需获取")
+        else:
+            print(f"结果: {result}")
+
+    elif cmd == "daily-full-all":
+        import time
+        from a_stock_db.database import StockBasic
+
+        session = db.get_session()
+        all_stocks = session.query(StockBasic).all()
+        session.close()
+
+        # 按配置过滤市场
+        stocks = [s for s in all_stocks if is_enabled(s.code)]
+        market_skipped = len(all_stocks) - len(stocks)
+
+        print(f"=" * 50)
+        print(f"全量获取所有股票历史日线数据")
+        print(f"=" * 50)
+        print(f"股票总数: {len(stocks)}（已跳过 {market_skipped} 只北证/创业板/科创板）")
+
+        completed = 0
+        failed = []
+        start_time = time.time()
+
+        skipped_complete = 0
+        for stock in stocks:
+            t0 = time.time()
+            result = fetch_stock_daily_full_history(stock.code)
+            elapsed = time.time() - t0
+            completed += 1
+            pct = completed / len(stocks) * 100
+            avg_time = (time.time() - start_time) / completed
+            remaining = len(stocks) - completed
+            eta = avg_time * remaining
+            if result is True:
+                status = "✓"
+            elif result == "已有完整数据":
+                status = "○ 已有完整"
+                skipped_complete += 1
+            else:
+                status = f"✗ {result}"
+                failed.append({'code': stock.code, 'name': stock.股票简称, 'reason': result})
+            print(f"[{completed}/{len(stocks)} {pct:.1f}%] {stock.code} {stock.股票简称}... {status} ({elapsed:.1f}s) ETA:{eta/3600:.1f}h", flush=True)
+
+        print(f"\n完成: 获取 {len(stocks) - skipped_complete - len(failed)}/{len(stocks)}, 已有完整 {skipped_complete}, 失败 {len(failed)}")
+        if failed:
+            print(f"\n失败列表:")
+            for f in failed[:20]:
+                print(f"  {f['code']} {f['name']}: {f['reason']}")
+            if len(failed) > 20:
+                print(f"  ... 还有 {len(failed) - 20} 只")
 
     elif cmd == "minute":
         fetch_all_stocks_minute(limit=limit)

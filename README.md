@@ -52,6 +52,7 @@ python3 -m a_stock_fetcher.cli [命令]
 | `init` | 初始化数据库 |
 | `daily-update` | 增量更新日线数据 |
 | `daily-full <CODE>` | 获取单只股票所有历史数据 |
+| `daily-full-all` | 获取所有股票所有历史数据 |
 | `minute` | 更新分时数据 |
 | `scheduler` | 启动定时任务 |
 

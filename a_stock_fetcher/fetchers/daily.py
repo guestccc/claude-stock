@@ -3,16 +3,46 @@
 数据来源: BaoStock
 """
 import time
+import json
 import baostock as bs
 import pandas as pd
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from sqlalchemy.dialects.sqlite import insert
 from a_stock_db.database import db, StockBasic, StockDaily
+from .basic import is_enabled
 from a_stock_db.config import REQUEST_DELAY, DAILY_HISTORY_DAYS
 
 
 # 全局登录状态
 _bs_logged_in = False
+
+# BaoStock 并发锁（底层连接非线程安全，需序列化访问）
+_bs_lock = __import__('threading').Lock()
+
+
+def _bs_query(query_func, *args, _retry=1, **kwargs):
+    """
+    BaoStock 查询的线程安全封装
+    BaoStock 底层连接非线程安全，login + query 全程加锁
+    查询失败时自动重连重试
+    """
+    global _bs_logged_in
+    for attempt in range(_retry + 1):
+        with _bs_lock:
+            _ensure_bs_login()
+            result = query_func(*args, **kwargs)
+        # 检查是否需要重连
+        if hasattr(result, 'error_code') and result.error_code != '0':
+            err_msg = getattr(result, 'error_msg', '')
+            if '接收数据异常' in err_msg or 'Broken pipe' in err_msg or '网络' in err_msg:
+                with _bs_lock:
+                    bs.logout()
+                    _bs_logged_in = False
+                    bs.login()
+                    _bs_logged_in = True
+                continue
+        break
+    return result
 
 
 def _ensure_bs_login():
@@ -33,6 +63,58 @@ def get_bs_symbol(code: str) -> str:
         return f'sz.{code}'
 
 
+def _build_daily_dict(code: str, row: dict) -> dict:
+    """
+    将 BaoStock 单行数据构建为数据库记录
+    :param code: 股票代码
+    :param row: BaoStock 返回的单行字典 {'date': ..., 'open': ..., 'high': ..., 'low': ..., 'close': ..., 'volume': ..., 'amount': ...}
+    :return: 数据库记录字典
+    """
+    trade_date = pd.to_datetime(row['date'])
+    return {
+        "code": code,
+        "日期": trade_date,
+        "开盘": float(row['open']) if row.get('open') else None,
+        "收盘": float(row['close']) if row.get('close') else None,
+        "最高": float(row['high']) if row.get('high') else None,
+        "最低": float(row['low']) if row.get('low') else None,
+        "成交量": float(row['volume']) if row.get('volume') else None,
+        "成交额": float(row['amount']) if row.get('amount') else None,
+        "振幅": None,
+        "涨跌幅": None,
+        "涨跌额": None,
+        "换手率": None,
+        "created_at": datetime.now(),
+        "raw_data": json.dumps({
+            "source": "baostock",
+            "fetch_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "original_data": {k: row[k] for k in ['date', 'open', 'high', 'low', 'close', 'volume', 'amount'] if k in row},
+        }, ensure_ascii=False),
+    }
+
+
+def _upsert_daily(session, daily: dict):
+    """
+    单条日线数据 upsert（INSERT OR REPLACE）
+    :param session: 数据库会话
+    :param daily: _build_daily_dict 返回的记录
+    """
+    stmt = insert(StockDaily).values(**daily)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['code', '日期'],
+        set_={
+            "开盘": daily["开盘"],
+            "收盘": daily["收盘"],
+            "最高": daily["最高"],
+            "最低": daily["最低"],
+            "成交量": daily["成交量"],
+            "成交额": daily["成交额"],
+            "raw_data": daily["raw_data"],
+        }
+    )
+    session.execute(stmt)
+
+
 def fetch_stock_daily(code: str, start_date: str = None, end_date: str = None) -> bool:
     """
     获取单只股票日线数据
@@ -45,7 +127,6 @@ def fetch_stock_daily(code: str, start_date: str = None, end_date: str = None) -
     try:
         symbol = get_bs_symbol(code)
 
-        # BaoStock 日期格式
         if start_date:
             bs_start = f'{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}'
         else:
@@ -56,12 +137,11 @@ def fetch_stock_daily(code: str, start_date: str = None, end_date: str = None) -
         else:
             bs_end = datetime.now().strftime('%Y-%m-%d')
 
-        _ensure_bs_login()
-
         # BaoStock: adjustflag 1=不复权 2=前复权 3=后复权
         adjustflag = '2' if True else '1'
 
-        rs = bs.query_history_k_data_plus(
+        rs = _bs_query(
+            bs.query_history_k_data_plus,
             symbol,
             'date,code,open,high,low,close,volume,amount',
             start_date=bs_start,
@@ -74,7 +154,6 @@ def fetch_stock_daily(code: str, start_date: str = None, end_date: str = None) -
             session.close()
             return False
 
-        # 转换为 DataFrame
         data_list = []
         while rs.next():
             data_list.append(rs.get_row_data())
@@ -85,40 +164,9 @@ def fetch_stock_daily(code: str, start_date: str = None, end_date: str = None) -
 
         df = pd.DataFrame(data_list, columns=rs.fields)
 
-        count = 0
         for _, row in df.iterrows():
-            trade_date = pd.to_datetime(row['date'])
-
-            daily = {
-                "code": code,
-                "日期": trade_date,
-                "开盘": float(row['open']) if row['open'] else None,
-                "收盘": float(row['close']) if row['close'] else None,
-                "最高": float(row['high']) if row['high'] else None,
-                "最低": float(row['low']) if row['low'] else None,
-                "成交量": float(row['volume']) if row['volume'] else None,
-                "成交额": float(row['amount']) if row['amount'] else None,
-                "振幅": None,
-                "涨跌幅": None,
-                "涨跌额": None,
-                "换手率": None,
-                "created_at": datetime.now(),
-            }
-
-            stmt = insert(StockDaily).values(**daily)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['code', '日期'],
-                set_={
-                    "开盘": daily["开盘"],
-                    "收盘": daily["收盘"],
-                    "最高": daily["最高"],
-                    "最低": daily["最低"],
-                    "成交量": daily["成交量"],
-                    "成交额": daily["成交额"],
-                }
-            )
-            session.execute(stmt)
-            count += 1
+            daily = _build_daily_dict(code, row)
+            _upsert_daily(session, daily)
 
         session.commit()
         session.close()
@@ -181,7 +229,6 @@ def fetch_stock_daily_incremental(code: str) -> str:
         # 判断是否需要获取数据
         if latest_date:
             latest_date_only = latest_date.date()
-            # 如果已有今天的数据，跳过
             if latest_date_only >= today:
                 session.close()
                 print(f"  {latest_date_only} 已有，跳过({time.time()-t0:.4f}s)")
@@ -203,9 +250,7 @@ def fetch_stock_daily_incremental(code: str) -> str:
         bs_end = f'{end[:4]}-{end[4:6]}-{end[6:8]}'
 
         t2 = time.time()
-        _ensure_bs_login()
-
-        rs = bs.query_history_k_data_plus(
+        rs = _bs_query(
             symbol,
             'date,code,open,high,low,close,volume,amount',
             start_date=bs_start,
@@ -220,7 +265,6 @@ def fetch_stock_daily_incremental(code: str) -> str:
             print(f"API失败({t_api:.4f}s): {rs.error_msg}")
             return f"API失败: {rs.error_msg}"
 
-        # 转换为 DataFrame
         data_list = []
         while rs.next():
             data_list.append(rs.get_row_data())
@@ -245,37 +289,8 @@ def fetch_stock_daily_incremental(code: str) -> str:
         t_write_start = time.time()
         count = 0
         for _, row in df.iterrows():
-            trade_date = pd.to_datetime(row['date'])
-
-            daily = {
-                "code": code,
-                "日期": trade_date,
-                "开盘": float(row['open']) if row['open'] else None,
-                "收盘": float(row['close']) if row['close'] else None,
-                "最高": float(row['high']) if row['high'] else None,
-                "最低": float(row['low']) if row['low'] else None,
-                "成交量": float(row['volume']) if row['volume'] else None,
-                "成交额": float(row['amount']) if row['amount'] else None,
-                "振幅": None,
-                "涨跌幅": None,
-                "涨跌额": None,
-                "换手率": None,
-                "created_at": datetime.now(),
-            }
-
-            stmt = insert(StockDaily).values(**daily)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['code', '日期'],
-                set_={
-                    "开盘": daily["开盘"],
-                    "收盘": daily["收盘"],
-                    "最高": daily["最高"],
-                    "最低": daily["最低"],
-                    "成交量": daily["成交量"],
-                    "成交额": daily["成交额"],
-                }
-            )
-            session.execute(stmt)
+            daily = _build_daily_dict(code, row)
+            _upsert_daily(session, daily)
             count += 1
 
         t3 = time.time()
@@ -314,14 +329,17 @@ def fetch_all_stocks_daily_incremental(codes: list = None, limit: int = None, de
 
     if codes:
         stocks = session.query(StockBasic).filter(StockBasic.code.in_(codes)).all()
-        print(f"指定股票: {len(codes)} 只")
+        stocks = [s for s in stocks if is_enabled(s.code)]
+        print(f"指定股票: {len(stocks)} 只")
     else:
-        stocks = session.query(StockBasic).all()
+        all_stocks = session.query(StockBasic).all()
+        stocks = [s for s in all_stocks if is_enabled(s.code)]
+        skipped = len(all_stocks) - len(stocks)
         if limit:
             stocks = stocks[:limit]
-            print(f"限制数量: {limit} 只")
+            print(f"限制数量: {limit} 只（已跳过 {skipped} 只北证/创业板/科创板）")
         else:
-            print(f"全量: {len(stocks)} 只")
+            print(f"全量: {len(stocks)} 只（已跳过 {skipped} 只北证/创业板/科创板）")
 
     session.close()
 
@@ -351,11 +369,13 @@ def fetch_all_stocks_daily_incremental(codes: list = None, limit: int = None, de
 def fetch_stock_daily_full_history(code: str, delay: float = REQUEST_DELAY) -> str:
     """
     获取单只股票所有历史日线数据（从上市至今）
+    检查数据库已有数据，完整则跳过，不完整则一次性拉取全部
     :param code: 股票代码
     :param delay: 请求间隔
-    :return: 成功返回 True，失败返回失败原因
+    :return: 成功返回 True，已有数据完整返回 "已有完整数据"，失败返回失败原因
     """
     from a_stock_db.config import ADJUST
+    from sqlalchemy import func
 
     t0 = time.time()
     session = db.get_session()
@@ -363,98 +383,92 @@ def fetch_stock_daily_full_history(code: str, delay: float = REQUEST_DELAY) -> s
     try:
         symbol = get_bs_symbol(code)
 
-        _ensure_bs_login()
-
-        # 获取股票的上市日期（从 BaoStock 获取）
-        rs = bs.query_stock_basic(code=symbol)
+        # 获取上市日期（带重试）
         listed_date = None
-        while rs.next():
-            row = rs.get_row_data()
-            # BaoStock 返回: [code, code_name, ipoDate, outDate, stock_type]
-            if len(row) >= 3 and row[2]:
-                listed_date = row[2]  # YYYY-MM-DD
-                break
+        for attempt in range(3):
+            try:
+                rs = _bs_query(bs.query_stock_basic, code=symbol)
+                if rs.error_code == '0':
+                    while rs.next():
+                        row = rs.get_row_data()
+                        if len(row) >= 3 and row[2]:
+                            listed_date = row[2]
+                            break
+                if listed_date:
+                    break
+            except Exception:
+                pass
+            time.sleep(1)
 
         if not listed_date:
             session.close()
             return "未找到上市日期"
 
-        # BaoStock 最大单次查询 2500 条，按年分段
-        start_year = int(listed_date[:4])
+        listed_dt = datetime.strptime(listed_date, '%Y-%m-%d')
+        start_year = listed_dt.year
         end_year = datetime.now().year
-        total_years = end_year - start_year + 1
 
-        print(f"  上市日期: {listed_date}, 共 {total_years} 年数据")
-        print(f"  进度: 0/{total_years} 年", end='', flush=True)
+        # 查数据库中已有的年份
+        existing_years = set(
+            r[0] for r in session.query(func.extract('year', StockDaily.日期)).filter(
+                StockDaily.code == code
+            ).distinct().all()
+        )
 
-        total_count = 0
-        for year in range(start_year, end_year + 1):
-            bs_start = f'{year}-01-01'
-            bs_end = f'{year}-12-31'
+        # 检查是否完整
+        all_years = set(range(start_year, end_year + 1))
+        missing_years = sorted(all_years - existing_years)
 
-            rs = bs.query_history_k_data_plus(
-                symbol,
-                'date,open,high,low,close,volume,amount',
-                start_date=bs_start,
-                end_date=bs_end,
-                frequency='d',
-                adjustflag='2' if ADJUST == 'qfq' else '1'
-            )
+        if not missing_years:
+            session.close()
+            print(f"  上市{listed_date}至今已有完整数据，跳过")
+            return "已有完整数据"
 
-            if rs.error_code != '0':
-                print(f"\n  API失败 {year}年: {rs.error_msg}")
-                continue
+        # 一次性拉取全部历史数据
+        bs_start = listed_date
+        bs_end = datetime.now().strftime('%Y-%m-%d')
 
-            data_list = []
-            while rs.next():
-                data_list.append(rs.get_row_data())
+        print(f"  上市{listed_date}，缺{len(missing_years)}年，一次拉取 {bs_start}~{bs_end}", end='', flush=True)
 
-            if not data_list:
-                time.sleep(delay)
-                print(f' 0', end='', flush=True)
-                continue
+        rs = _bs_query(
+            bs.query_history_k_data_plus,
+            symbol,
+            'date,open,high,low,close,volume,amount',
+            start_date=bs_start,
+            end_date=bs_end,
+            frequency='d',
+            adjustflag='2' if ADJUST == 'qfq' else '1'
+        )
 
-            count = 0
-            for row in data_list:
-                trade_date = pd.to_datetime(row[0])
-                daily = {
-                    "code": code,
-                    "日期": trade_date,
-                    "开盘": float(row[1]) if row[1] else None,
-                    "收盘": float(row[2]) if row[2] else None,
-                    "最高": float(row[3]) if row[3] else None,
-                    "最低": float(row[4]) if row[4] else None,
-                    "成交量": float(row[5]) if row[5] else None,
-                    "成交额": float(row[6]) if row[6] else None,
-                    "振幅": None,
-                    "涨跌幅": None,
-                    "涨跌额": None,
-                    "换手率": None,
-                    "created_at": datetime.now(),
-                }
-                stmt = insert(StockDaily).values(**daily)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['code', '日期'],
-                    set_={
-                        "开盘": daily["开盘"],
-                        "收盘": daily["收盘"],
-                        "最高": daily["最高"],
-                        "最低": daily["最低"],
-                        "成交量": daily["成交量"],
-                        "成交额": daily["成交额"],
-                    }
-                )
-                session.execute(stmt)
-                count += 1
+        if rs.error_code != '0':
+            session.close()
+            print(f" API失败: {rs.error_msg}")
+            return f"API失败: {rs.error_msg}"
 
-            session.commit()
-            total_count += count
-            print(f' {year}:{count}', end='', flush=True)
-            time.sleep(delay)
+        data_list = []
+        while rs.next():
+            data_list.append(rs.get_row_data())
 
+        if not data_list:
+            session.close()
+            print(" 无数据")
+            return "无数据"
+
+        count = 0
+        for row in data_list:
+            row_dict = {
+                'date': row[0], 'open': row[1], 'high': row[2],
+                'low': row[3], 'close': row[4], 'volume': row[5], 'amount': row[6],
+            }
+            daily = _build_daily_dict(code, row_dict)
+            _upsert_daily(session, daily)
+            count += 1
+
+        session.commit()
         t_total = time.time() - t0
         session.close()
-        print(f"\n  完成: {total_count} 条, 耗时 {t_total:.1f}s")
+        print(f" 写入{count}条 ({t_total:.1f}s)")
+        time.sleep(delay)
         return True
 
     except Exception as e:
