@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>风格二：极简专业</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f7f8fa; color: #1a1a2e; height: 100vh; overflow: hidden; }
+
+  .layout { display: flex; height: 100vh; }
+
+  /* 侧边栏 */
+  .sidebar { width: 200px; background: #ffffff; border-right: 1px solid #e8e8ec; display: flex; flex-direction: column; }
+  .sidebar-logo { padding: 24px 20px 20px; border-bottom: 1px solid #e8e8ec; }
+  .sidebar-logo span { font-size: 15px; font-weight: 700; color: #1a1a2e; letter-spacing: -0.3px; }
+  .sidebar-logo small { display: block; font-size: 11px; color: #9999a8; font-weight: 400; margin-top: 2px; }
+  .sidebar-nav { flex: 1; padding: 12px 8px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; color: #666680; cursor: pointer; transition: all 0.15s; margin-bottom: 2px; }
+  .nav-item:hover { background: #f0f0f5; color: #1a1a2e; }
+  .nav-item.active { background: #1a1a2e; color: #ffffff; }
+  .nav-item .icon { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .nav-item small { margin-left: auto; background: #ff4d4f; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 10px; }
+
+  /* 主区域 */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { height: 56px; background: #ffffff; border-bottom: 1px solid #e8e8ec; display: flex; align-items: center; padding: 0 24px; gap: 16px; }
+  .topbar-search { flex: 1; max-width: 400px; position: relative; }
+  .topbar-search input { width: 100%; background: #f7f8fa; border: 1px solid transparent; border-radius: 8px; padding: 8px 16px 8px 36px; font-size: 13px; outline: none; transition: border 0.2s; font-family: inherit; }
+  .topbar-search input:focus { border-color: #1a1a2e; background: #fff; }
+  .topbar-search::before { content: '🔍'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 12px; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 600; }
+
+  .main-content { flex: 1; padding: 24px; overflow-y: auto; }
+
+  .page-title { font-size: 20px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px; }
+  .page-sub { font-size: 12px; color: #9999a8; margin-bottom: 20px; }
+
+  /* 指标卡 */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+  .stat-card { background: #ffffff; border: 1px solid #e8e8ec; border-radius: 12px; padding: 18px 20px; }
+  .stat-label { font-size: 11px; color: #9999a8; margin-bottom: 6px; }
+  .stat-value { font-size: 24px; font-weight: 700; color: #1a1a2e; }
+  .stat-change { font-size: 12px; margin-top: 4px; }
+  .stat-change.up { color: #52c41a; }
+  .stat-change.down { color: #ff4d4f; }
+
+  /* 图表区域 */
+  .chart-section { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .card { background: #ffffff; border: 1px solid #e8e8ec; border-radius: 12px; overflow: hidden; }
+  .card-header { padding: 14px 18px; border-bottom: 1px solid #e8e8ec; display: flex; align-items: center; justify-content: space-between; }
+  .card-title { font-size: 13px; font-weight: 600; color: #1a1a2e; }
+  .card-body { padding: 18px; }
+  .chart-placeholder { height: 260px; background: linear-gradient(135deg, #fafafa, #f0f0f5); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #ccc; font-size: 13px; position: relative; overflow: hidden; }
+  .chart-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px); background-size: 30px 30px; }
+
+  /* 表格 */
+  .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table th { padding: 10px 16px; text-align: left; color: #9999a8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e8e8ec; font-weight: 500; }
+  .table td { padding: 10px 16px; border-bottom: 1px solid #f0f0f5; }
+  .table tr:last-child td { border-bottom: none; }
+  .table tr:hover td { background: #fafafa; }
+  .up { color: #52c41a; font-weight: 500; }
+  .down { color: #ff4d4f; font-weight: 500; }
+  .code { color: #666680; font-weight: 500; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  .tag-buy { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+  .tag-sell { background: #fff2f0; color: #ff4d4f; border: 1px solid #ffccc7; }
+  .tag-watch { background: #f0f5ff; color: #597ef7; border: 1px solid #adc6ff; }
+
+  /* 按钮 */
+  .btn { padding: 7px 16px; border-radius: 6px; font-size: 12px; cursor: pointer; border: none; font-family: inherit; font-weight: 500; transition: all 0.15s; }
+  .btn-dark { background: #1a1a2e; color: #fff; }
+  .btn-dark:hover { background: #2d2d4a; }
+  .btn-outline { background: transparent; color: #666680; border: 1px solid #e8e8ec; }
+  .btn-outline:hover { border-color: #1a1a2e; color: #1a1a2e; }
+
+  /* 回测卡片 */
+  .backtest-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .metric { background: #f7f8fa; border-radius: 8px; padding: 12px 14px; }
+  .metric-label { font-size: 11px; color: #9999a8; margin-bottom: 4px; }
+  .metric-value { font-size: 18px; font-weight: 700; }
+  .progress { height: 6px; background: #e8e8ec; border-radius: 3px; overflow: hidden; margin-top: 8px; }
+  .progress-bar { height: 100%; background: #52c41a; border-radius: 3px; }
+  .progress-bar.red { background: #ff4d4f; }
+
+  .divider { height: 16px; }
+
+  /* 筛选栏 */
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .filter-chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; border: 1px solid #e8e8ec; background: #fff; color: #666680; cursor: pointer; transition: all 0.15s; }
+  .filter-chip:hover { border-color: #1a1a2e; }
+  .filter-chip.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+
+  .flex { display: flex; }
+  .items-center { align-items: center; }
+  .gap8 { gap: 8px; }
+  .flex1 { flex: 1; }
+  .ml-auto { margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- 侧边栏 -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <span>QuantDesk</span>
+      <small>A股量化研究平台</small>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-item active">
+        <span class="icon">📊</span> 行情监控
+      </div>
+      <div class="nav-item">
+        <span class="icon">🔍</span> 智能选股
+        <small>3</small>
+      </div>
+      <div class="nav-item">
+        <span class="icon">📈</span> 策略回测
+      </div>
+      <div class="nav-item">
+        <span class="icon">💼</span> 持仓管理
+      </div>
+      <div class="nav-item">
+        <span class="icon">📋</span> 交易记录
+      </div>
+      <div class="nav-item">
+        <span class="icon">🏢</span> 财务分析
+      </div>
+    </div>
+    <div style="padding:16px;border-top:1px solid #e8e8ec;">
+      <div class="nav-item">
+        <span class="icon">⚙️</span> 系统设置
+      </div>
+    </div>
+  </div>
+
+  <!-- 主体 -->
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+    <!-- 顶部栏 -->
+    <div class="topbar">
+      <div class="topbar-search">
+        <input placeholder="搜索股票代码、名称或板块..." value="600584 长电科技">
+      </div>
+      <div class="topbar-right">
+        <span style="font-size:12px;color:#9999a8;margin-right:8px;">2026-04-10 收盘</span>
+        <div class="avatar">CC</div>
+      </div>
+    </div>
+
+    <!-- 主内容 -->
+    <div class="main-content">
+      <div class="page-title">行情监控</div>
+      <div class="page-sub">实时数据 · 最后更新 15:30:05</div>
+
+      <!-- 指标卡片 -->
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-label">持仓总市值</div>
+          <div class="stat-value">¥ 186.5万</div>
+          <div class="stat-change up">▲ +¥3.2万 (+1.75%)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">今日收益</div>
+          <div class="stat-value" style="color:#52c41a;">+¥8,420</div>
+          <div class="stat-change up">跑赢大盘 +1.92%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">年化收益率</div>
+          <div class="stat-value" style="color:#52c41a;">+28.6%</div>
+          <div class="stat-change">夏普比率 1.82</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">信号库总数</div>
+          <div class="stat-value">47</div>
+          <div class="stat-change up">今日新增 3</div>
+        </div>
+      </div>
+
+      <!-- 图表 -->
+      <div class="chart-section">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">600584 长电科技 — K线图</span>
+            <div class="flex gap8 items-center">
+              <span style="font-size:12px;color:#52c41a;font-weight:600;">48.62 +2.60%</span>
+              <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;">1M</button>
+              <button class="btn btn-dark" style="padding:4px 10px;font-size:11px;">1D</button>
+              <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;">1W</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-placeholder">
+              <div class="chart-grid"></div>
+              <span style="z-index:1;color:#ccc;">[ K线图表区域 — ECharts / TradingView ]</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 回测摘要 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">策略回测 — Donchian</span>
+            <button class="btn btn-dark" style="padding:4px 12px;font-size:11px;">运行回测</button>
+          </div>
+          <div class="card-body">
+            <div class="backtest-metrics">
+              <div class="metric">
+                <div class="metric-label">年化收益</div>
+                <div class="metric-value" style="color:#52c41a;">+28.6%</div>
+                <div class="progress"><div class="progress-bar" style="width:72%;"></div></div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">夏普比率</div>
+                <div class="metric-value">1.82</div>
+                <div class="progress"><div class="progress-bar" style="width:60%;"></div></div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">最大回撤</div>
+                <div class="metric-value" style="color:#ff4d4f;">-15.3%</div>
+                <div class="progress"><div class="progress-bar red" style="width:38%;"></div></div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">胜率</div>
+                <div class="metric-value">62.4%</div>
+                <div class="progress"><div class="progress-bar" style="width:62%;"></div></div>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div style="font-size:12px;color:#9999a8;">回测周期: 2020-01-01 ~ 2026-04-10</div>
+            <div style="margin-top:8px;font-size:12px;color:#666680;">总交易次数: 128 笔<br>盈利交易: 80 笔 | 亏损: 48 笔</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 选股列表 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">今日信号池</span>
+          <div class="flex gap8 items-center">
+            <div class="filter-bar" style="margin:0;">
+              <div class="filter-chip active">全部</div>
+              <div class="filter-chip">买入信号</div>
+              <div class="filter-chip">观察</div>
+              <div class="filter-chip">止损预警</div>
+            </div>
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:11px;">导出</button>
+          </div>
+        </div>
+        <table class="table">
+          <thead><tr><th>代码</th><th>名称</th><th>信号</th><th>评分</th><th>现价</th><th>涨跌幅</th><th>成交额(亿)</th><th>PE</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr><td class="code">600584</td><td>长电科技</td><td><span class="tag tag-buy">买入</span></td><td><strong>85</strong></td><td>48.62</td><td class="up">+2.60%</td><td>8.32</td><td>28.6</td><td><button class="btn btn-dark" style="padding:3px 10px;font-size:11px;">详情</button></td></tr>
+            <tr><td class="code">000858</td><td>五粮液</td><td><span class="tag tag-buy">买入</span></td><td><strong>79</strong></td><td>168.20</td><td class="up">+1.84%</td><td>12.5</td><td>22.3</td><td><button class="btn btn-outline" style="padding:3px 10px;font-size:11px;">详情</button></td></tr>
+            <tr><td class="code">300750</td><td>宁德时代</td><td><span class="tag tag-watch">观察</span></td><td><strong>72</strong></td><td>265.40</td><td class="down">-0.33%</td><td>18.7</td><td>35.1</td><td><button class="btn btn-outline" style="padding:3px 10px;font-size:11px;">详情</button></td></tr>
+            <tr><td class="code">002475</td><td>立讯精密</td><td><span class="tag tag-buy">买入</span></td><td><strong>68</strong></td><td>32.80</td><td class="up">+0.91%</td><td>5.4</td><td>25.8</td><td><button class="btn btn-outline" style="padding:3px 10px;font-size:11px;">详情</button></td></tr>
+            <tr><td class="code">600519</td><td>贵州茅台</td><td><span class="tag tag-sell">观望</span></td><td><strong>55</strong></td><td>1680.50</td><td class="up">+0.15%</td><td>28.3</td><td>32.4</td><td><button class="btn btn-outline" style="padding:3px 10px;font-size:11px;">详情</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

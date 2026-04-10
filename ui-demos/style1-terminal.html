@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>风格一：交易终端 (柔和深色)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; background: #000000; color: #c4c9d4; height: 100vh; overflow: hidden; }
+
+  .layout { display: flex; height: 100vh; }
+
+  /* 侧边栏 */
+  .sidebar { width: 56px; background: #2d2d2d; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px; }
+  .sidebar-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; cursor: pointer; transition: background 0.2s; color: #7a8099; }
+  .sidebar-icon:hover { background: #1a1a1a; color: #a8b0c4; }
+  .sidebar-icon.active { background: #1a2d5c; color: #7aa4f5; }
+  .sidebar-icon svg { width: 18px; height: 18px; }
+  .sidebar-spacer { flex: 1; }
+
+  /* 顶部栏 */
+  .topbar { height: 48px; background: #2d2d2d; display: flex; align-items: center; padding: 0 16px; gap: 16px; }
+  .topbar-title { color: #7aa4f5; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; }
+  .topbar-tabs { display: flex; gap: 2px; }
+  .topbar-tab { padding: 6px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; color: #7a8099; transition: all 0.2s; }
+  .topbar-tab:hover { color: #c4c9d4; background: #1a1a1a; }
+  .topbar-tab.active { color: #7aa4f5; background: #1a2d5c; }
+  .topbar-search { flex: 1; max-width: 280px; }
+  .search-input { width: 100%; background: #1a1a1a; border: none; border-radius: 6px; padding: 6px 12px; color: #c4c9d4; font-size: 12px; font-family: inherit; outline: none; }
+  .search-input:focus { outline: 1px solid #4a6fa5; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+  .market-tag { font-size: 11px; padding: 3px 8px; border-radius: 4px; background: #0d1a0d; color: #5cb85c; }
+  .market-tag.red { background: #1a0d0d; color: #e06666; }
+
+  /* 主内容区 */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .main-tabs { display: flex; border-bottom: 1px solid #1a1a1a; padding: 0 16px; background: #2d2d2d; }
+  .main-tab { padding: 10px 20px; font-size: 12px; color: #7a8099; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
+  .main-tab:hover { color: #c4c9d4; }
+  .main-tab.active { color: #7aa4f5; border-bottom-color: #7aa4f5; }
+  .main-content { flex: 1; padding: 16px; overflow-y: auto; background: #000000; }
+
+  /* 卡片 */
+  .card { background: #2d2d2d; border-radius: 8px; overflow: hidden; }
+  .card-header { padding: 10px 14px; border-bottom: 1px solid #1a1a1a; display: flex; align-items: center; justify-content: space-between; background: #2d2d2d; }
+  .card-title { font-size: 12px; color: #9aa0b8; font-weight: 500; }
+  .card-body { padding: 14px; }
+
+  /* 网格布局 */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+
+  /* 指标卡 */
+  .stat-card { background: #2d2d2d; border-radius: 8px; padding: 14px; }
+  .stat-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; color: #e5e7eb; font-weight: 600; }
+  .stat-change { font-size: 11px; margin-top: 4px; color: #5cb85c; }
+  .stat-change.down { color: #e06666; }
+  .stat-change.neutral { color: #9aa0b8; }
+
+  /* K线图占位 */
+  .chart-placeholder { background: #2d2d2d; border-radius: 8px; height: 280px; display: flex; align-items: center; justify-content: center; color: #3d3d3d; font-size: 12px; position: relative; overflow: hidden; }
+  .chart-placeholder::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 40%; background: linear-gradient(to bottom, rgba(122,164,245,0.06), transparent); }
+  .chart-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(42,42,42,0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(42,42,42,0.8) 1px, transparent 1px); background-size: 40px 24px; }
+
+  /* 表格 */
+  .table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .table th { padding: 8px 12px; text-align: left; color: #6b7280; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #1a1a1a; font-weight: 500; background: #2d2d2d; }
+  .table td { padding: 8px 12px; border-bottom: 1px solid #1a1a1a; color: #c4c9d4; }
+  .table tr:hover td { background: #2d2d2d; }
+  .table .up { color: #5cb85c; }
+  .table .down { color: #e06666; }
+  .table .code { color: #7aa4f5; }
+  .table .name { color: #d0d6e8; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; background: #1a1a1a; color: #9aa0b8; }
+  .badge.buy { background: #0d1a0d; color: #5cb85c; }
+  .badge.sell { background: #1a0d0d; color: #e06666; }
+  .badge.watch { background: #0d1420; color: #7aa4f5; }
+
+  /* 分隔线 */
+  .divider { height: 12px; }
+
+  /* 按钮 */
+  .btn { padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; border: none; font-family: inherit; transition: all 0.2s; }
+  .btn-primary { background: #1a2d5c; color: #7aa4f5; }
+  .btn-primary:hover { background: #1e3a6e; }
+  .btn-ghost { background: transparent; color: #9aa0b8; }
+  .btn-ghost:hover { background: #1a1a1a; color: #c4c9d4; }
+
+  /* 进度条 */
+  .progress { height: 4px; background: #1a1a1a; border-radius: 2px; overflow: hidden; }
+  .progress-bar { height: 100%; background: #4a6fa5; border-radius: 2px; }
+
+  .flex { display: flex; }
+  .gap8 { gap: 8px; }
+  .gap12 { gap: 12px; }
+  .items-center { align-items: center; }
+  .flex1 { flex: 1; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- 侧边栏 -->
+  <div class="sidebar">
+    <div class="sidebar-icon active" title="行情">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
+    <div class="sidebar-icon" title="选股">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    </div>
+    <div class="sidebar-icon" title="回测">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+    </div>
+    <div class="sidebar-icon" title="持仓">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+    </div>
+    <div class="sidebar-icon" title="财务">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    </div>
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-icon" title="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    </div>
+  </div>
+
+  <!-- 主体 -->
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+    <!-- 顶部栏 -->
+    <div class="topbar">
+      <div class="topbar-title">📈 A股量化终端</div>
+      <div class="topbar-tabs">
+        <div class="topbar-tab active">行情</div>
+        <div class="topbar-tab">选股</div>
+        <div class="topbar-tab">回测</div>
+        <div class="topbar-tab">持仓</div>
+      </div>
+      <div class="topbar-search">
+        <input class="search-input" placeholder="输入股票代码或名称..." value="600584">
+      </div>
+      <div class="topbar-right">
+        <span class="market-tag">上证指数 3284.21 <span class="up">+0.83%</span></span>
+        <span class="market-tag red">深证成指 10578.43 <span class="down">-0.21%</span></span>
+      </div>
+    </div>
+
+    <!-- 主内容 -->
+    <div class="main">
+      <div class="main-tabs">
+        <div class="main-tab active">K线图</div>
+        <div class="main-tab">分时图</div>
+        <div class="main-tab">技术指标</div>
+        <div class="main-tab">基本面</div>
+        <div class="main-tab">龙虎榜</div>
+      </div>
+      <div class="main-content">
+
+        <!-- 指标卡片 -->
+        <div class="grid-4">
+          <div class="stat-card">
+            <div class="stat-label">最新价</div>
+            <div class="stat-value">48.62</div>
+            <div class="stat-change">▲ 1.23 (+2.60%)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">今开 / 昨收</div>
+            <div class="stat-value" style="font-size:16px;">47.80 / 47.39</div>
+            <div class="stat-change neutral">成交额 8.32亿</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">最高 / 最低</div>
+            <div class="stat-value" style="font-size:16px;">49.15 / 47.52</div>
+            <div class="stat-change neutral">换手率 1.82%</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">市值 (亿)</div>
+            <div class="stat-value">780.5</div>
+            <div class="stat-change neutral">PE 28.6 | PB 3.42</div>
+          </div>
+        </div>
+
+        <!-- K线图 -->
+        <div class="chart-placeholder">
+          <div class="chart-grid"></div>
+          <span style="z-index:1;color:#5a6078;">[ K线图表区域 — TradingView / ECharts ]</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 下方两栏 -->
+        <div class="grid-2">
+          <!-- 选股表格 -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">📡 今日信号</span>
+              <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;">刷新</button>
+            </div>
+            <table class="table">
+              <thead><tr><th>代码</th><th>名称</th><th>信号</th><th>评分</th><th>涨跌幅</th></tr></thead>
+              <tbody>
+                <tr><td class="code">600584</td><td class="name">长电科技</td><td><span class="badge buy">买入</span></td><td>85</td><td class="up">+2.60%</td></tr>
+                <tr><td class="code">000858</td><td class="name">五粮液</td><td><span class="badge buy">买入</span></td><td>79</td><td class="up">+1.84%</td></tr>
+                <tr><td class="code">300750</td><td class="name">宁德时代</td><td><span class="badge watch">观察</span></td><td>72</td><td class="down">-0.33%</td></tr>
+                <tr><td class="code">002475</td><td class="name">立讯精密</td><td><span class="badge buy">买入</span></td><td>68</td><td class="up">+0.91%</td></tr>
+                <tr><td class="code">600519</td><td class="name">贵州茅台</td><td><span class="badge sell">观望</span></td><td>55</td><td class="up">+0.15%</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 回测摘要 -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">📊 回测摘要 — Donchian策略</span>
+              <button class="btn btn-primary" style="font-size:11px;padding:3px 10px;">运行回测</button>
+            </div>
+            <div class="card-body">
+              <div class="grid-2" style="margin-bottom:10px;">
+                <div><div class="stat-label">年化收益</div><div class="stat-value" style="color:#5cb85c;font-size:18px;">+28.6%</div></div>
+                <div><div class="stat-label">夏普比率</div><div class="stat-value" style="font-size:18px;">1.82</div></div>
+                <div><div class="stat-label">最大回撤</div><div class="stat-value" style="color:#e06666;font-size:18px;">-15.3%</div></div>
+                <div><div class="stat-label">胜率</div><div class="stat-value" style="font-size:18px;">62.4%</div></div>
+              </div>
+              <div class="progress"><div class="progress-bar" style="width:62%;"></div></div>
+              <div style="font-size:10px;color:#6b7280;margin-top:4px;">胜率 62.4%</div>
+              <div style="margin-top:12px;">
+                <div class="stat-label">最近一笔交易</div>
+                <div style="font-size:12px;color:#d0d6e8;">买入 600584 @ 46.80 &nbsp;|&nbsp; 止损 45.20 &nbsp;|&nbsp; 止盈 50.15</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
