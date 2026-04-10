@@ -1117,6 +1117,11 @@ def generate_html_report(code, name, trades, equity_curve, stats, klines=None, r
                     <div class="stat-sub">¥{stats['total_return']:+,.0f}</div>
                 </div>
                 <div class="stat-item">
+                    <div class="stat-label">日均收益率</div>
+                    <div class="stat-value {'win' if stats.get('daily_return_pct', 0) >= 0 else 'loss'}">{stats.get('daily_return_pct', 0):+.4f}%</div>
+                    <div class="stat-sub">总收益/交易日</div>
+                </div>
+                <div class="stat-item">
                     <div class="stat-label">交易次数</div>
                     <div class="stat-value">{stats['num_trades']}</div>
                     <div class="stat-sub">盈利{stats['win_trades']} 亏损{stats['loss_trades']}</div>
