@@ -1,0 +1,65 @@
+{# =====================================================================
+   CTA 唐奇安突破 — 盘中实时信号报告模版
+   数据来源: data/daily/{date}.json
+   使用 Jinja2 渲染
+===================================================================== #}
+{%- macro score_level(score) -%}
+{%- if score >= 95 -%}🟢高
+{%- elif score >= 85 -%}🟡中高
+{%- else -%}🟡中
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro market_trend_label(market_score) -%}
+{%- if market_score >= 20 -%}上涨中
+{%- elif market_score >= 10 -%}震荡偏上
+{%- else -%}横盘
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro trade_status(cta) -%}
+{%- if cta.allow_trade -%}
+✅ ✅ 允许交易 | 风险{{ "%.2f"|format(cta.risk_total) }}R | R/R={{ "%.1f"|format(cta.rr_ratio) }}
+{%- else -%}
+⚠️ 暂停交易 | 风险{{ "%.2f"|format(cta.risk_total) }}R | R/R={{ "%.1f"|format(cta.rr_ratio) }}
+{%- endif -%}
+{%- endmacro -%}
+
+{# ===== 大盘状态头部 ===== #}
+{{ "➡️ **大盘状态**" }} | 涨幅:{{ "%.2f"|format(market.change_pct) }}% | 共振得分:{{ market.market_score }}/30 | 均线上:否
+
+{{ "🚨 **唐奇安突破 - 盘中实时信号**" }}
+时间: {{ report_date }} {{ report_time }} | 阈值: ≥30分 | 满分: 130分 | 共 {{ total_count }} 只达标，展示 Top 20
+
+{{ "📐 **评分规则**" }}
+- 大盘共振 **30分** | 大盘涨幅 ≥0.5% 得30分，0~0.5% 得10分，横盘得0分
+- 回踩 **40分** | 现价相对当日最高价的回撤，越小越好（≤0.5% 得40分）
+- 开盘结构 **25分** | 缺口+回调+开盘价守住情况
+- 均价偏离 **15分** | 现价相对均价偏离越大说明当天强势
+- 量价配合 **9分** | 尾盘走势稳 + 下午温和放量
+
+{# ===== 股票信号 ===== #}
+{%- for stock in stocks %}
+{%- set s = stock -%}
+{# 评分等级标签 #}
+{%- set level = "🟡中" if s.total_score >= 80 else "🔴低" -%}
+
+**{{ s.code }} {{ s.name }}** 🟡中 评分:**{{ s.total_score }}**分
+上轨:{{ "%.2f"|format(s.upper_band) }} | 现价:{{ "%.2f"|format(s.close) }} | 回踩:{{ s.pullback_pct_display }} | 均价:{{ "%+.1f"|format(s.avg_diff_pct) }}%
+大盘共振:{{ s.market_score }}分 | 回踩{{ s.pullback_pct_display }}/开盘结构{{ s.opening.score }}分(高开{{ s.opening.gap.gap_pct_display }}{{ s.opening.gap.gap_level }}/{{ s.opening.retreat.retreat_level }}{{ s.opening.retreat.retreat_pct_display }}/{% if s.opening.holds_open %}守住开盘价{% else %}跌破开盘价{% endif %})/均线上{{ "%+.1f"|format(s.avg_diff_pct) }}%/量价{{ s.volume_score.score }}分(尾盘{{ s.volume_score.closing_strength }}/下午{{ s.volume_score.afternoon_volume }})/大盘横盘
+
+{{ "📊 **CTA建仓分析**" }}
+入场价: `{{ "%.2f"|format(s.cta.entry_price) }}` | ATR: `{{ "%.3f"|format(s.cta.atr) }}`
+止损价: `{{ "%.2f"|format(s.cta.stop_loss) }}` | 止盈价: `{{ "%.2f"|format(s.cta.take_profit) }}`
+可开仓: `{{ s.cta.shares }}`股 | 金额: `¥{{ "%.0f"|format(s.cta.amount) }}`
+单笔风险: `{{ "%.2f"|format(s.cta.risk_r) }}R` | R/R: `{{ "%.0fR"|format(s.cta.rr_ratio) }}`
+{{ trade_status(s.cta) }}
+
+{% endfor %}
+
+
+
+{# ===== 无信号时 ===== #}
+{%- if not stocks %}
+⚠️ 暂无符合条件股票（≥80分）
+{%- endif %}

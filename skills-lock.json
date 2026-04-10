@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "akshare-stock": {
+      "source": "molezzz/openclaw-stock-skill",
+      "sourceType": "github",
+      "computedHash": "1651472ea21359ea7be2a5aa5d41a9764f1a75fc45ccf9de27fdda1ffa17a742"
+    }
+  }
+}

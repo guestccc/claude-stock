@@ -1,0 +1,8 @@
+# A股数据库依赖
+akshare>=1.13.0          # 财经数据获取
+pandas>=2.0.0            # 数据处理
+numpy>=1.26.0            # 数值计算
+sqlalchemy>=2.0.0        # ORM框架
+requests>=2.31.0         # HTTP请求
+python-dotenv>=1.0.0     # 环境变量
+schedule>=1.2.0          # 定时任务
