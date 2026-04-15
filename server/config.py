@@ -16,5 +16,5 @@ CORS_ORIGINS = [
 ]
 
 # 服务器配置
-HOST = "0.0.0.0"
+HOST = "::"  # 同时监听 IPv4 和 IPv6
 PORT = 8000

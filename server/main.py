@@ -15,6 +15,9 @@ async def lifespan(app: FastAPI):
     """应用生命周期：启动时注入 sys.path，确保能导入现有模块"""
     if PROJECT_ROOT not in sys.path:
         sys.path.insert(0, PROJECT_ROOT)
+    # 初始化数据库表（创建 watchlist/holdings/transactions）
+    from server.db.models import init_tables
+    init_tables()
     yield
 
 
