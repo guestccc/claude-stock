@@ -48,6 +48,7 @@ python3 -m a_stock_fetcher.cli [命令] [参数]
 | `financial [N]` | 更新财务数据，默认 100 条 |
 | `boards` | 更新概念/行业板块 |
 | `cleanup` | 清理过期分时数据 |
+| `rules/rules2/rules3` | 查看配置规则 |
 | `scheduler` | 启动定时任务调度器 |
 | `status` | 查看调度器状态 |
 

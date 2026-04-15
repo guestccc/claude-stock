@@ -2,6 +2,11 @@
 
 本目录包含三个相互协作的项目，用于A股市场的数据获取、存储和量化分析。
 
+**相关文档**:
+- [a_stock_db](./a_stock_db/README.md) | [Skill](./.claude/skills/a-stock-db/SKILL.md)
+- [a_stock_fetcher](./a_stock_fetcher/README.md) | [Skill](./.claude/skills/a-stock-fetcher/SKILL.md)
+- [cta_report](./cta-report/README.md) | [Skill](./.claude/skills/cta-report.md)
+
 ---
 
 ## 项目列表
@@ -9,6 +14,8 @@
 ### 1. a_stock_db - A股数据库层
 
 **作用**: 数据持久化层，统一管理所有股票数据的存储
+
+**相关文档**: [README](./a_stock_db/README.md) | [Skill](./.claude/skills/a-stock-db/SKILL.md)
 
 **核心功能**:
 - ORM模型定义（StockBasic、StockDaily、StockMinute、StockFinancial等）
@@ -30,6 +37,8 @@
 ### 2. a_stock_fetcher - A股数据获取器
 
 **作用**: 从BaoStock API获取数据并写入数据库
+
+**相关文档**: [README](./a_stock_fetcher/README.md) | [Skill](./.claude/skills/a-stock-fetcher/SKILL.md)
 
 **核心功能**:
 - 日线数据获取（支持全量/增量/历史）
@@ -54,6 +63,7 @@ python3 -m a_stock_fetcher.cli [命令]
 | `daily-full <CODE>` | 获取单只股票所有历史数据 |
 | `daily-full-all` | 获取所有股票所有历史数据 |
 | `minute` | 更新分时数据 |
+| `rules/rules2/rules3` | 查看配置规则 |
 | `scheduler` | 启动定时任务 |
 
 ---
@@ -61,6 +71,8 @@ python3 -m a_stock_fetcher.cli [命令]
 ### 3. cta_report - CTA策略报告生成器
 
 **作用**: 读取回测结果，生成格式化分析报告
+
+**相关文档**: [README](./cta-report/README.md) | [Skill](./.claude/skills/cta-report.md)
 
 **核心功能**:
 - 读取cta_report目录下的回测数据

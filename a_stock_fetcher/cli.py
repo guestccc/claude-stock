@@ -32,6 +32,7 @@ HELP_TEXT = """
   financial [N]          - 更新财务数据，默认100条
   boards                 - 更新概念/行业板块
   cleanup                - 清理过期分时数据
+  rules/rules2/rules3   - 查看配置规则
   scheduler              - 启动定时任务调度器
   status                 - 查看调度器状态
 
@@ -194,6 +195,24 @@ def main():
         print("任务列表:")
         for job in status.get('jobs', []):
             print(f"  [{job['id']}] {job['name']} - 下次运行: {job['next_run']}")
+        print("=" * 60)
+
+    elif cmd in ("rules", "rules2", "rules3"):
+        from a_stock_db.config import (
+            REQUEST_DELAY, MINUTE_KEEP_DAYS, MINUTE_STOCK_LIMIT,
+            DAILY_HISTORY_DAYS, ADJUST, TRADING_HOURS, ENABLED_EXCHANGES,
+        )
+        print("=" * 60)
+        print("a_stock_fetcher 配置规则")
+        print("=" * 60)
+        print(f"请求间隔: {REQUEST_DELAY}s")
+        print(f"分时保留: {MINUTE_KEEP_DAYS} 天")
+        print(f"分时股票数限制: {MINUTE_STOCK_LIMIT if MINUTE_STOCK_LIMIT else '无限制'}")
+        print(f"日线历史获取: {DAILY_HISTORY_DAYS} 天")
+        print(f"复权类型: {ADJUST}")
+        print(f"交易时段: {TRADING_HOURS['morning_start']}-{TRADING_HOURS['morning_end']} / "
+              f"{TRADING_HOURS['afternoon_start']}-{TRADING_HOURS['afternoon_end']}")
+        print(f"市场启用状态: {', '.join(f'{k}={v}' for k, v in ENABLED_EXCHANGES.items())}")
         print("=" * 60)
 
     else:
