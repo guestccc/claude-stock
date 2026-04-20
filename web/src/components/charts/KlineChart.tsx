@@ -179,12 +179,12 @@ export default function KlineChart({ data, height = CHART_HEIGHT }: Props) {
           let val = data;
 
           // K线：开高低收 + 涨幅（使用 API 返回的 pct_change）
+          // ECharts axis trigger 下 value 格式为 [x, open, close, low, high]
           if (seriesName === 'K线') {
             const obj = data as { value: number[]; pctChange: number | null };
-            const [open] = obj.value;
-            const close = obj.value[3];
+            const [, open, close, low, high] = obj.value;
             const chg = obj.pctChange != null ? obj.pctChange.toFixed(2) : '-';
-            val = `开 ${open?.toFixed(2)}  高 ${obj.value[1]?.toFixed(2)}  低 ${obj.value[2]?.toFixed(2)}  收 ${close?.toFixed(2)}  涨幅 ${chg}%`;
+            val = `开 ${open?.toFixed(2)}  高 ${high?.toFixed(2)}  低 ${low?.toFixed(2)}  收 ${close?.toFixed(2)}  涨幅 ${chg}%`;
           }
           // 唐奇安通道 / 布林带：从 data._lineType 取轨类型
           else if (

@@ -47,3 +47,30 @@ export async function getQuotes(codes: string[]): Promise<QuoteItem[]> {
   const { data } = await client.get('/market/quotes', { params: { codes: codes.join(',') } })
   return data.data
 }
+
+/** 股票列表项 */
+export interface StockListItem {
+  code: string
+  name: string
+  date: string
+  open: number | null
+  close: number | null
+  high: number | null
+  low: number | null
+  volume: number | null
+  turnover: number | null
+  pct_change: number | null
+}
+
+/** 股票列表 */
+export async function getStockList(params?: {
+  date?: string
+  search?: string
+  sort_by?: string
+  sort_order?: string
+  page?: number
+  page_size?: number
+}): Promise<{ data: StockListItem[]; total: number; page: number; page_size: number }> {
+  const { data } = await client.get('/market/stocks', { params })
+  return data
+}

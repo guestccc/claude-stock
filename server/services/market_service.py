@@ -1,7 +1,7 @@
 """行情服务：桥接 a_stock_db 查询层"""
 from datetime import datetime, timedelta
 from typing import List, Optional
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 
 from a_stock_db import StockBasic, StockDaily, StockMinute, StockRealtime
 from a_stock_db.database import db
@@ -151,5 +151,89 @@ def get_minute(code: str, date: Optional[str] = None) -> List[dict]:
             }
             for r in rows
         ]
+    finally:
+        session.close()
+
+
+# ---------- 字段映射：sort_by 参数 → StockDaily 列 ----------
+_SORT_MAP = {
+    "pct_change": StockDaily.涨跌幅,
+    "close": StockDaily.收盘,
+    "volume": StockDaily.成交量,
+    "turnover": StockDaily.成交额,
+    "open": StockDaily.开盘,
+    "high": StockDaily.最高,
+    "low": StockDaily.最低,
+}
+
+
+def get_stock_list(
+    date: Optional[str] = None,
+    search: Optional[str] = None,
+    sort_by: str = "pct_change",
+    sort_order: str = "desc",
+    page: int = 1,
+    page_size: int = 50,
+) -> dict:
+    """获取股票列表（支持搜索、排序、分页）"""
+    session = db.get_session()
+    try:
+        # 日期：默认取数据库最新交易日
+        if date:
+            target_date = datetime.strptime(date, "%Y-%m-%d")
+        else:
+            latest = session.query(func.max(StockDaily.日期)).scalar()
+            target_date = latest or datetime.now()
+
+        # 基础查询：StockDaily JOIN StockBasic
+        query = (
+            session.query(StockDaily, StockBasic)
+            .join(StockBasic, StockDaily.code == StockBasic.code)
+            .filter(StockDaily.日期 == target_date)
+        )
+
+        # 搜索：代码或名称模糊匹配
+        if search:
+            pattern = f"%{search}%"
+            query = query.filter(
+                (StockDaily.code.like(pattern))
+                | (StockBasic.股票简称.like(pattern))
+            )
+
+        # 总数
+        total = query.count()
+
+        # 排序
+        sort_col = _SORT_MAP.get(sort_by, StockDaily.涨跌幅)
+        if sort_order == "asc":
+            query = query.order_by(sort_col.asc())
+        else:
+            query = query.order_by(sort_col.desc())
+
+        # 分页
+        offset = (page - 1) * page_size
+        rows = query.offset(offset).limit(page_size).all()
+
+        data = []
+        for daily, basic in rows:
+            data.append({
+                "code": daily.code,
+                "name": basic.股票简称 or "",
+                "date": daily.日期.strftime("%Y-%m-%d") if daily.日期 else "",
+                "open": daily.开盘,
+                "close": daily.收盘,
+                "high": daily.最高,
+                "low": daily.最低,
+                "volume": daily.成交量,
+                "turnover": daily.成交额,
+                "pct_change": daily.涨跌幅,
+            })
+
+        return {
+            "data": data,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
     finally:
         session.close()

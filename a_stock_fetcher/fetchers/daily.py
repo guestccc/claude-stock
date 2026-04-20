@@ -251,6 +251,7 @@ def fetch_stock_daily_incremental(code: str) -> str:
 
         t2 = time.time()
         rs = _bs_query(
+            bs.query_history_k_data_plus,
             symbol,
             'date,code,open,high,low,close,volume,amount',
             start_date=bs_start,
@@ -280,6 +281,7 @@ def fetch_stock_daily_incremental(code: str) -> str:
         if latest_date:
             df['date'] = pd.to_datetime(df['date'])
             df = df[df['date'] > latest_date]
+            df['date'] = df['date'].dt.strftime('%Y-%m-%d')
 
         if df.empty:
             session.close()

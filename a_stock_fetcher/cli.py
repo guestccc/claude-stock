@@ -15,6 +15,7 @@ from a_stock_fetcher import (
     run_scheduler,
     get_scheduler,
     is_enabled,
+    clean_daily_data,
 )
 
 
@@ -32,6 +33,7 @@ HELP_TEXT = """
   financial [N]          - 更新财务数据，默认100条
   boards                 - 更新概念/行业板块
   cleanup                - 清理过期分时数据
+  clean-daily [N]       - 清洗日线数据：补全涨跌幅/涨跌额/振幅
   rules/rules2/rules3   - 查看配置规则
   scheduler              - 启动定时任务调度器
   status                 - 查看调度器状态
@@ -170,6 +172,9 @@ def main():
 
     elif cmd == "cleanup":
         cleanup_old_minute_data()
+
+    elif cmd == "clean-daily":
+        clean_daily_data(limit=limit)
 
     elif cmd == "scheduler":
         run_scheduler()

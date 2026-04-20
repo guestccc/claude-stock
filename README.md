@@ -58,13 +58,20 @@ python3 -m a_stock_fetcher.cli [命令]
 **主要命令**:
 | 命令 | 说明 |
 |------|------|
-| `init` | 初始化数据库 |
-| `daily-update` | 增量更新日线数据 |
-| `daily-full <CODE>` | 获取单只股票所有历史数据 |
-| `daily-full-all` | 获取所有股票所有历史数据 |
-| `minute` | 更新分时数据 |
+| `init` | 初始化数据库（创建表 + 股票基本信息 + 板块） |
+| `daily [N]` | 全量获取日线数据，可指定 N 限制数量 |
+| `daily-update [N]` | 增量更新日线数据 |
+| `daily-update --codes 600519,000001` | 增量更新指定股票 |
+| `daily-full <CODE>` | 获取指���股票所有历史日线数据 |
+| `daily-full-all` | 获取所有股票所有历史日线数据 |
+| `minute [N]` | 更新 1 分钟分时数据，可指定 N 限制数量 |
+| `financial [N]` | 更新财务数据，默认 100 条 |
+| `boards` | 更新概念/行业板块 |
+| `cleanup` | 清理过期分时数据 |
+| `clean-daily [N]` | 清洗日线数据：补全涨跌幅/涨跌额/振幅 |
 | `rules/rules2/rules3` | 查看配置规则 |
-| `scheduler` | 启动定时任务 |
+| `scheduler` | 启动定时任务调度器 |
+| `status` | 查看调度器状态 |
 
 ---
 
@@ -82,9 +89,18 @@ python3 -m a_stock_fetcher.cli [命令]
 
 **使用方式**:
 ```bash
-cd /Users/jschen/Desktop/person/claude-study/cta_report
+cd /Users/jschen/Desktop/person/claude-study/cta-report
 python3 cli.py [命令]
 ```
+
+**主要命令**:
+| 命令 | 说明 |
+|------|------|
+| `run [--date]` | 生成唐奇安突破信号报告 |
+| `scan [--date] [--top N] [--save]` | 扫描全市场唐奇安突破 |
+| `backtest [--code/--codes] [--start] [--end] [--capital]` | 回测指定股票 |
+| `rules` | 查看现有回测规则 |
+| `test` | 运行测试 |
 
 ---
 

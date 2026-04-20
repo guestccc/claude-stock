@@ -9,6 +9,7 @@ from server.models.stock import (
     QuotesResponse,
     MinuteResponse,
     MarketIndexResponse,
+    StockListResponse,
 )
 
 router = APIRouter(prefix="/market", tags=["行情"])
@@ -67,3 +68,23 @@ async def get_market_index():
         "sh": {"close": sh.get("close"), "change_pct": sh.get("change_pct")},
         "sz": {"close": sz.get("close"), "change_pct": sz.get("change_pct")},
     }
+
+
+@router.get("/stocks", response_model=StockListResponse)
+async def get_stock_list(
+    date: Optional[str] = Query(None, description="日期 YYYY-MM-DD，默认最新交易日"),
+    search: Optional[str] = Query(None, description="搜索关键词（代码或名称）"),
+    sort_by: str = Query("pct_change", description="排序字段: pct_change/close/volume/turnover"),
+    sort_order: str = Query("desc", description="排序方向: asc/desc"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(50, ge=1, le=200, description="每页条数"),
+):
+    """获取股票列表"""
+    return market_service.get_stock_list(
+        date=date,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=page,
+        page_size=page_size,
+    )

@@ -103,7 +103,12 @@ const S = {
   },
 }
 
-export default function WatchlistPanel() {
+interface WatchlistPanelProps {
+  /** 外部传入 key 变化时刷新列表 */
+  refreshKey?: number
+}
+
+export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
   const { code: currentCode } = useParams()
   const navigate = useNavigate()
   const [items, setItems] = useState<WatchlistItem[]>([])
@@ -130,7 +135,7 @@ export default function WatchlistPanel() {
 
   useEffect(() => {
     loadList()
-  }, [loadList])
+  }, [loadList, refreshKey])
 
   // 检查当前股票是否在自选股中
   useEffect(() => {

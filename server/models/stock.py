@@ -83,3 +83,25 @@ class MarketIndexResponse(BaseModel):
     """市场指数响应"""
     sh: IndexSummary
     sz: IndexSummary
+
+
+class StockListItem(BaseModel):
+    """股票列表单项"""
+    code: str
+    name: str
+    date: str
+    open: Optional[float] = None
+    close: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    volume: Optional[float] = None
+    turnover: Optional[float] = None
+    pct_change: Optional[float] = None
+
+
+class StockListResponse(BaseModel):
+    """股票列表响应"""
+    data: List[StockListItem]
+    total: int
+    page: int
+    page_size: int

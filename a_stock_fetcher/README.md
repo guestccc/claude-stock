@@ -30,6 +30,7 @@ python3 -m a_stock_fetcher.cli [命令] [参数]
 | `financial [N]` | 更新财务数据，默认 100 条 |
 | `boards` | 更新概念/行业板块 |
 | `cleanup` | 清理过期分时数据 |
+| `clean-daily [N]` | 清洗日线数据：补全涨跌幅/涨跌额/振幅 |
 | `rules/rules2/rules3` | 查看配置规则 |
 | `scheduler` | 启动定时任务调度器 |
 | `status` | 查看调度器状态 |
@@ -60,6 +61,12 @@ python3 -m a_stock_fetcher.cli scheduler
 
 # 查看调度器状态
 python3 -m a_stock_fetcher.cli status
+
+# 清洗日线数据（补全涨跌幅/涨跌额/振幅）
+python3 -m a_stock_fetcher.cli clean-daily
+
+# 清洗日线数据（限制处理前 100 只）
+python3 -m a_stock_fetcher.cli clean-daily 100
 ```
 
 ## 数据源

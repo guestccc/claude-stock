@@ -16,6 +16,7 @@ from .fetchers import (
     fetch_concept,
     fetch_industry,
     fetch_all_boards,
+    clean_daily_data,
     is_enabled,
     get_stock_type,
 )
@@ -40,6 +41,8 @@ __all__ = [
     'fetch_concept',
     'fetch_industry',
     'fetch_all_boards',
+    # 数据清洗
+    'clean_daily_data',
     # 调度器
     'start_scheduler',
     'run_scheduler',
