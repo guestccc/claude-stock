@@ -13,28 +13,55 @@ interface Props {
 
 export default function StockDetailPanel({ code, onWatchlistChange }: Props) {
   const [name, setName] = useState('')
-  const [dailyData, setDailyData] = useState<DailyBar[]>([])
+  const [allData, setAllData] = useState<DailyBar[]>([])
   const [loading, setLoading] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
 
   // 自选股状态
   const [inList, setInList] = useState(false)
   const [watchlistId, setWatchlistId] = useState<number | null>(null)
 
+  // 首次加载：拉最近 500 条（约 2 年）
   useEffect(() => {
     if (!code) return
     let cancelled = false
     setLoading(true)
-    getDaily(code, { limit: 1250 })
+    setAllData([])
+    setHasMore(true)
+    getDaily(code, { limit: 500 })
       .then((res) => {
         if (!cancelled) {
-          setDailyData(res.data)
+          setAllData(res.data)
+          setHasMore(res.data.length === 500)
           setName(res.name)
         }
       })
-      .catch(() => { if (!cancelled) setDailyData([]) })
+      .catch(() => { if (!cancelled) setAllData([]) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [code])
+
+  // 加载更早数据（滚动到最左侧触发）
+  const handleLoadMore = useCallback(async () => {
+    if (!hasMore || isLoadingMore || allData.length === 0) return
+    setIsLoadingMore(true)
+    const earliestDate = allData[0].date
+    try {
+      const res = await getDaily(code, { end: earliestDate, limit: 500 })
+      // 后端 end 是 <=，过滤掉等于 earliestDate 的（避免重复）
+      const newData = res.data.filter((d) => d.date < earliestDate)
+      if (newData.length === 0) {
+        setHasMore(false)
+      } else {
+        setAllData((prev) => [...newData, ...prev])
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [code, allData, hasMore, isLoadingMore])
 
   // 检查当前股票是否在自选股中
   const checkWatchlist = useCallback(async () => {
@@ -68,8 +95,8 @@ export default function StockDetailPanel({ code, onWatchlistChange }: Props) {
     }
   }
 
-  const latest = dailyData.length > 0 ? dailyData[dailyData.length - 1] : null
-  const prev = dailyData.length > 1 ? dailyData[dailyData.length - 2] : null
+  const latest = allData.length > 0 ? allData[allData.length - 1] : null
+  const prev = allData.length > 1 ? allData[allData.length - 2] : null
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -110,8 +137,14 @@ export default function StockDetailPanel({ code, onWatchlistChange }: Props) {
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.textMuted }}>
           加载中...
         </div>
-      ) : dailyData.length > 0 ? (
-        <KlineChart data={dailyData} height={580} />
+      ) : allData.length > 0 ? (
+        <KlineChart
+          data={allData}
+          height={580}
+          onLoadMore={handleLoadMore}
+          isLoadingMore={isLoadingMore}
+          hasMore={hasMore}
+        />
       ) : (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.textMuted }}>
           点击左侧股票查看 K 线图

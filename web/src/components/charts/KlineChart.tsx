@@ -1,5 +1,5 @@
 /** K 线图组件 — 插件式架构 */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
 import type { DailyBar } from '../../api/market';
@@ -37,11 +37,60 @@ const DOWN_COLOR = '#5cb85c';
 interface Props {
   data: DailyBar[];
   height?: number;
+  onLoadMore?: () => void;
+  isLoadingMore?: boolean;
+  hasMore?: boolean;
 }
 
 // ---------- 主组件 ----------
-export default function KlineChart({ data, height = CHART_HEIGHT }: Props) {
+export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, isLoadingMore, hasMore }: Props) {
   const [activeSubs, setActiveSubs] = useState<SubType[]>(['VOL', 'MACD', 'KDJ']);
+
+  // ---------- 分页加载：refs ----------
+  const chartRef = useRef<ReactECharts>(null);
+  const cooldownRef = useRef(false);
+  const isLoadingRef = useRef(false);
+  const hasMoreRef = useRef(true);
+  const onLoadMoreRef = useRef(onLoadMore);
+
+  useEffect(() => { isLoadingRef.current = isLoadingMore ?? false; }, [isLoadingMore]);
+  useEffect(() => { hasMoreRef.current = hasMore ?? true; }, [hasMore]);
+  useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
+
+  // ---------- 分页加载：通过 onEvents 绑定 dataZoom ----------
+  const handleDataZoom = useCallback((params: any) => {
+    if (!hasMoreRef.current || isLoadingRef.current || cooldownRef.current) return;
+    const batch = params.batch || [];
+    const isAtLeftEdge = batch.some((b: any) => b.start <= 2);
+    if (isAtLeftEdge) {
+      cooldownRef.current = true;
+      onLoadMoreRef.current?.();
+      setTimeout(() => { cooldownRef.current = false; }, 2000);
+    }
+  }, []);
+
+  // ---------- 分页加载：数据 prepend 后调整 dataZoom 保持视图 ----------
+  const dataLenRef = useRef(data.length);
+  useEffect(() => {
+    const delta = data.length - dataLenRef.current;
+    dataLenRef.current = data.length;
+
+    if (delta > 0 && dataLenRef.current > delta) {
+      const chart = chartRef.current?.getEchartsInstance();
+      if (!chart) return;
+      const option = chart.getOption() as any;
+      const dz = option.dataZoom?.[0];
+      if (dz && dz.startValue != null) {
+        setTimeout(() => {
+          chart.dispatchAction({
+            type: 'dataZoom',
+            startValue: dz.startValue + delta,
+            endValue: dz.endValue + delta,
+          });
+        }, 50);
+      }
+    }
+  }, [data]);
 
   // ---------- 计算层（全部 useMemo） ----------
   const ohlc = useMemo(() => toOHLC(data), [data]);
@@ -245,13 +294,20 @@ export default function KlineChart({ data, height = CHART_HEIGHT }: Props) {
   }
 
   return (
-    <div style={{ height }}>
+    <div style={{ height, position: 'relative' }}>
       <SubToggle activeSubs={activeSubs} onToggle={setActiveSubs} />
+      {isLoadingMore && hasMore && (
+        <div style={{ position: 'absolute', left: 60, top: 8, color: '#f5a742', fontSize: 11, zIndex: 10 }}>
+          加载历史数据中...
+        </div>
+      )}
       <ReactECharts
+        ref={chartRef}
         option={option}
         style={{ width: '100%', height: '100%' }}
         opts={{ renderer: 'canvas' }}
         notMerge={true}
+        onEvents={{ dataZoom: handleDataZoom }}
       />
     </div>
   );

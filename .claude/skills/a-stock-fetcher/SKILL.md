@@ -24,7 +24,8 @@ a_stock_fetcher/
     ├── daily.py      # 日线数据
     ├── minute.py     # 分时数据
     ├── financial.py  # 财务数据
-    └── concept.py    # 板块数据
+    ├── concept.py    # 板块数据
+    └── clean.py      # 数据清洗（补全涨跌幅等）
 ```
 
 ## CLI 命令
@@ -48,6 +49,7 @@ python3 -m a_stock_fetcher.cli [命令] [参数]
 | `financial [N]` | 更新财务数据，默认 100 条 |
 | `boards` | 更新概念/行业板块 |
 | `cleanup` | 清理过期分时数据 |
+| `clean-daily [N]` | 清洗日线数据：补全涨跌幅/涨跌额/振幅 |
 | `rules/rules2/rules3` | 查看配置规则 |
 | `scheduler` | 启动定时任务调度器 |
 | `status` | 查看调度器状态 |
@@ -64,6 +66,8 @@ python3 -m a_stock_fetcher.cli daily-full 600519                  # 获取贵州
 python3 -m a_stock_fetcher.cli daily-full-all                   # 获取所有股票所有历史数据
 python3 -m a_stock_fetcher.cli scheduler                          # 启动定时任务
 python3 -m a_stock_fetcher.cli status                             # 查看调度器状态
+python3 -m a_stock_fetcher.cli clean-daily                        # 清洗日线数据（补全涨跌幅）
+python3 -m a_stock_fetcher.cli clean-daily 100                    # 清洗日线数据（限制前100只）
 ```
 
 ## Python 模块调用
@@ -79,6 +83,7 @@ from a_stock_fetcher import (
     fetch_stock_financial,
     fetch_all_boards,
     run_scheduler,
+    clean_daily_data,
 )
 
 # 初始化
@@ -89,6 +94,9 @@ fetch_all_stocks_daily_incremental()
 
 # 获取单只股票所有历史数据
 fetch_stock_daily_full_history('600519')
+
+# 清洗日线数据（补全涨跌幅/涨跌额/振幅）
+clean_daily_data()
 
 # 定时任务
 run_scheduler()

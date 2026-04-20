@@ -25,9 +25,22 @@ python3 cli.py scan --date 2026-04-07 --top 100 --save
 python3 cli.py backtest --code 000001 --start 2024-01-01
 python3 cli.py backtest --codes 000001,002382 --capital 50000
 
-# 4. 运行测试
+# 4. 查看回测规则
+python3 cli.py rules
+
+# 5. 运行测试
 python3 cli.py test
 ```
+
+### 命令列表
+
+| 命令 | 说明 |
+|------|------|
+| `run [--date]` | 生成唐奇安突破信号报告 |
+| `scan [--date] [--top N] [--save]` | 扫描全市场唐奇安突破 |
+| `backtest [--code/--codes] [--start] [--end] [--capital]` | 回测指定股票 |
+| `rules` | 查看现有回测规则 |
+| `test` | 运行测试 |
 
 ## 输出
 - `output/{日期}_signal_report.md` — Top 20 评分报告
