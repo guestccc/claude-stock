@@ -112,9 +112,10 @@ export function donchian(
   period = 20,
 ): ChannelResult[] {
   return highs.map((_, i) => {
-    if (i < period - 1) return null;
-    const hh = Math.max(...highs.slice(i - period + 1, i + 1));
-    const ll = Math.min(...lows.slice(i - period + 1, i + 1));
+    // 经典定义：上/下轨基于前 N 根 K 线，不含当前 K 线，避免未来函数
+    if (i < period) return null;
+    const hh = Math.max(...highs.slice(i - period, i));
+    const ll = Math.min(...lows.slice(i - period, i));
     return { upper: hh, middle: (hh + ll) / 2, lower: ll };
   });
 }

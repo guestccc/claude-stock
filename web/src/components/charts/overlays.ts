@@ -37,6 +37,7 @@ function donchianOverlay(
   dcData: (ChannelResult | null)[],
 ): OverlayDef {
   const upper = dcData.map((x) => x?.upper ?? '-');
+  const middle = dcData.map((x) => x?.middle ?? '-');
   const lower = dcData.map((x) => x?.lower ?? '-');
   return {
     id: 'donchian',
@@ -44,6 +45,7 @@ function donchianOverlay(
     color,
     lines: [
       buildLine('唐奇安通道', '上轨', color, 'dashed', upper),
+      buildLine('唐奇安通道', '中轨', color, 'dashed', middle),
       buildLine('唐奇安通道', '下轨', color, 'dashed', lower),
     ],
   };

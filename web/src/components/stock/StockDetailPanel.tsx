@@ -24,7 +24,7 @@ export default function StockDetailPanel({ code, onWatchlistChange }: Props) {
     if (!code) return
     let cancelled = false
     setLoading(true)
-    getDaily(code, { limit: 120 })
+    getDaily(code, { limit: 1250 })
       .then((res) => {
         if (!cancelled) {
           setDailyData(res.data)

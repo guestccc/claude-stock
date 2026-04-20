@@ -27,7 +27,7 @@ async def get_daily(
     code: str,
     start: Optional[str] = Query(None, description="开始日期 YYYY-MM-DD"),
     end: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD"),
-    limit: int = Query(120, ge=1, le=1000, description="返回条数"),
+    limit: int = Query(120, ge=1, le=2000, description="返回条数"),
 ):
     """获取日 K 线数据"""
     data = market_service.get_daily(code, start_date=start, end_date=end, limit=limit)

@@ -40,15 +40,15 @@ const breakoutMark: MarkDef = {
     const blUpperValues = bl.lines[0]?.values ?? [];
 
     const marks: MarkPointOption[] = [];
-    for (let i = 1; i < ohlc.length; i++) {
+    for (let i = 0; i < ohlc.length; i++) {
       const close = ohlc[i].close;
-      const dcPrevU = dcUpperValues[i - 1];
+      const dcU = dcUpperValues[i];
       const blU = blUpperValues[i];
 
       if (
-        typeof dcPrevU === 'number' &&
+        typeof dcU === 'number' &&
         typeof blU === 'number' &&
-        close >= dcPrevU &&
+        close >= dcU &&
         close >= blU
       ) {
         marks.push({
