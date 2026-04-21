@@ -59,12 +59,12 @@ const styles = {
     fontSize: 11,
     padding: '3px 8px',
     borderRadius: 4,
-    color: colors.up,
-    background: colors.upBg,
+    color: colors.rise,
+    background: colors.riseBg,
   },
   tagRed: {
-    color: colors.down,
-    background: colors.downBg,
+    color: colors.fall,
+    background: colors.fallBg,
   },
 }
 
@@ -150,10 +150,10 @@ export default function Topbar() {
       </div>
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 12 }}>
         <span style={{ ...styles.tag, fontSize: 10 }}>
-          上证 3284.21 <span style={{ color: colors.up }}>+0.83%</span>
+          上证 3284.21 <span style={{ color: colors.rise }}>+0.83%</span>
         </span>
         <span style={{ ...styles.tag, ...styles.tagRed, fontSize: 10 }}>
-          深证 10578.43 <span style={{ color: colors.down }}>-0.21%</span>
+          深证 10578.43 <span style={{ color: colors.fall }}>-0.21%</span>
         </span>
       </div>
     </div>

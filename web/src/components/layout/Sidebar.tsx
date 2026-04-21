@@ -44,6 +44,13 @@ const icons = {
       <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
     </svg>
   ),
+  // 基金 — 趋势箭头
+  fund: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </svg>
+  ),
 }
 
 const navItems = [
@@ -52,6 +59,7 @@ const navItems = [
   { path: '/screener', label: '选股', icon: icons.screener },
   { path: '/backtest', label: '回测', icon: icons.backtest },
   { path: '/portfolio', label: '持仓', icon: icons.portfolio },
+  { path: '/fund', label: '基金', icon: icons.fund },
 ]
 
 const styles = {

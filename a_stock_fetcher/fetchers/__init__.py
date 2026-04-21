@@ -8,6 +8,7 @@ from .minute import fetch_stock_minute, fetch_all_stocks_minute, cleanup_old_min
 from .financial import fetch_stock_financial
 from .concept import fetch_concept, fetch_industry, fetch_all_boards
 from .clean import clean_daily_data
+from .fund import fetch_fund_estimation, fetch_watchlist_estimations, add_watchlist, remove_watchlist, get_watchlist_codes
 
 __all__ = [
     'fetch_stock_basic',
@@ -28,4 +29,10 @@ __all__ = [
     # 股票分类
     'get_stock_type',
     'is_enabled',
+    # 基金
+    'fetch_fund_estimation',
+    'fetch_watchlist_estimations',
+    'add_watchlist',
+    'remove_watchlist',
+    'get_watchlist_codes',
 ]

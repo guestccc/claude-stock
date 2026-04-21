@@ -1,7 +1,7 @@
 /** 股票列表页 — 全市场股票筛选（左列表 + 右详情面板） */
 import { useState, useEffect, useCallback } from 'react'
 import { getStockList, type StockListItem } from '../api/market'
-import { colors, fonts } from '../theme/tokens'
+import { colors, fonts, changeColor } from '../theme/tokens'
 import StockDetailPanel from '../components/stock/StockDetailPanel'
 
 // ---------- 常量 ----------
@@ -38,10 +38,6 @@ function fmtVol(v: number | null): string {
   return v.toFixed(0)
 }
 
-function pctColor(v: number | null): string {
-  if (v == null) return colors.textMuted
-  return v > 0 ? colors.down : v < 0 ? colors.up : colors.textMuted
-}
 
 // ---------- 组件 ----------
 export default function StockListPage() {
@@ -205,7 +201,7 @@ export default function StockListPage() {
                     <td style={{ ...styles.td, textAlign: 'right', width: 80 }}>
                       {fmtNum(s.close)}
                     </td>
-                    <td style={{ ...styles.td, textAlign: 'right', width: 80, color: pctColor(s.pct_change), fontWeight: 600 }}>
+                    <td style={{ ...styles.td, textAlign: 'right', width: 80, color: changeColor(s.pct_change), fontWeight: 600 }}>
                       {s.pct_change != null ? `${s.pct_change > 0 ? '+' : ''}${s.pct_change.toFixed(2)}%` : '-'}
                     </td>
                     <td style={{ ...styles.td, textAlign: 'right', width: 100 }}>

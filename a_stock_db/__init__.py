@@ -13,6 +13,9 @@ from .database import (
     StockConcept,
     StockRealtime,
     StockIndexComponents,
+    FundBasic,
+    FundWatchlist,
+    FundEstimation,
     DatabaseManager,
 )
 from .config import (
@@ -39,6 +42,10 @@ __all__ = [
     'StockConcept',
     'StockRealtime',
     'StockIndexComponents',
+    # 基金模型
+    'FundBasic',
+    'FundWatchlist',
+    'FundEstimation',
     # 配置
     'DB_PATH',
     'MINUTE_KEEP_DAYS',

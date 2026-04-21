@@ -19,6 +19,11 @@ from .fetchers import (
     clean_daily_data,
     is_enabled,
     get_stock_type,
+    fetch_fund_estimation,
+    fetch_watchlist_estimations,
+    add_watchlist,
+    remove_watchlist,
+    get_watchlist_codes,
 )
 from .scheduler import start_scheduler, run_scheduler, get_scheduler
 
@@ -50,4 +55,10 @@ __all__ = [
     # 过滤
     'is_enabled',
     'get_stock_type',
+    # 基金
+    'fetch_fund_estimation',
+    'fetch_watchlist_estimations',
+    'add_watchlist',
+    'remove_watchlist',
+    'get_watchlist_codes',
 ]

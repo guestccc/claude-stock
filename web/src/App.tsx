@@ -5,6 +5,7 @@ import StockListPage from './pages/StockListPage'
 import ScreenerPage from './pages/ScreenerPage'
 import BacktestPage from './pages/BacktestPage'
 import PortfolioPage from './pages/PortfolioPage'
+import FundPage from './pages/FundPage'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/backtest" element={<BacktestPage />} />
         <Route path="/backtest/:code" element={<BacktestPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
+        <Route path="/fund" element={<FundPage />} />
       </Route>
     </Routes>
   )

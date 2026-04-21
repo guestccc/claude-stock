@@ -1,7 +1,7 @@
 /** 自选股面板 — 右侧列表，点击切换股票 */
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { colors } from '../../theme/tokens'
+import { colors, changeColor, changeSign } from '../../theme/tokens'
 import {
   getWatchlist,
   addWatchlist,
@@ -177,7 +177,6 @@ export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
             const q = quotes[item.code]
             const isActive = item.code === currentCode
             const chgPct = q?.change_pct
-            const isUp = chgPct != null && chgPct >= 0
             return (
               <div
                 key={item.id}
@@ -196,11 +195,11 @@ export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
                 <div style={{ textAlign: 'right' }}>
                   {q?.close != null && (
                     <>
-                      <div style={{ ...S.priceText, color: isUp ? colors.up : colors.down }}>
+                      <div style={{ ...S.priceText, color: changeColor(chgPct) }}>
                         {q.close.toFixed(2)}
                       </div>
-                      <div style={{ ...S.changeText, color: isUp ? colors.up : colors.down }}>
-                        {isUp ? '+' : ''}{chgPct?.toFixed(2)}%
+                      <div style={{ ...S.changeText, color: changeColor(chgPct) }}>
+                        {changeSign(chgPct)}
                       </div>
                     </>
                   )}

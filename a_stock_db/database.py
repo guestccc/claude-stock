@@ -218,6 +218,66 @@ class StockRealtime(Base):
     raw_data = Column(Text, comment='原始JSON数据备份')
 
 
+class FundBasic(Base):
+    """
+    基金基本信息表
+    数据来源: akshare.fund_individual_basic_info_xq()
+    """
+    __tablename__ = 'fund_basic'
+
+    code = Column(String(10), primary_key=True, comment='基金代码')
+    name = Column(String(100), nullable=False, comment='基金名称')
+    full_name = Column(String(200), comment='基金全称')
+    fund_type = Column(String(50), comment='基金类型(混合型/股票型/债券型...)')
+    company = Column(String(100), comment='基金公司')
+    manager = Column(String(50), comment='基金经理')
+    setup_date = Column(String(20), comment='成立日期')
+    scale = Column(String(50), comment='基金规模')
+    benchmark = Column(Text, comment='业绩比较基准')
+    strategy = Column(Text, comment='投资策略')
+    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    raw_data = Column(Text, comment='原始JSON数据备份')
+
+
+class FundWatchlist(Base):
+    """
+    自选基金表
+    """
+    __tablename__ = 'fund_watchlist'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, unique=True, comment='基金代码')
+    added_at = Column(DateTime, default=datetime.now, comment='添加时间')
+    remark = Column(String(200), comment='备注')
+
+
+class FundEstimation(Base):
+    """
+    基金实时估值表
+    数据来源: 天天基金 fundgz.1234567.com.cn
+    """
+    __tablename__ = 'fund_estimation'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment='基金代码')
+    name = Column(String(100), comment='基金名称')
+    date = Column(String(10), nullable=False, comment='净值日期 YYYY-MM-DD')
+    update_time = Column(String(20), comment='估值时间 14:13')
+    nav = Column(Float, comment='单位净值(最新)')
+    acc_nav = Column(Float, comment='累计净值')
+    last_nav = Column(Float, comment='上日净值')
+    est_nav = Column(Float, comment='估算净值')
+    est_pct = Column(Float, comment='估算增长率%')
+    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
+    raw_data = Column(Text, comment='原始JSON数据备份')
+
+    __table_args__ = (
+        UniqueConstraint('code', 'date', name='uq_fund_date'),
+        Index('idx_code', 'code'),
+    )
+
+
 class CTADonchianScan(Base):
     """
     CTA 唐奇安扫描结果表

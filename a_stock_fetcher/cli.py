@@ -16,6 +16,10 @@ from a_stock_fetcher import (
     get_scheduler,
     is_enabled,
     clean_daily_data,
+    fetch_fund_estimation,
+    fetch_watchlist_estimations,
+    add_watchlist,
+    remove_watchlist,
 )
 
 
@@ -34,6 +38,10 @@ HELP_TEXT = """
   boards                 - 更新概念/行业板块
   cleanup                - 清理过期分时数据
   clean-daily [N]       - 清洗日线数据：补全涨跌幅/涨跌额/振幅
+  fund-add <CODE>         - 添加自选基金并获取实时估值
+  fund-update            - 更新所有自选基金实时估值
+  fund-remove <CODE>     - 移除自选基金
+  fund-list              - 查看自选基金列表
   rules/rules2/rules3   - 查看配置规则
   scheduler              - 启动定时任务调度器
   status                 - 查看调度器状态
@@ -44,6 +52,8 @@ HELP_TEXT = """
   python3 -m a_stock_fetcher.cli daily-update --codes 600519,000001 # 增量更新指定股票
   python3 -m a_stock_fetcher.cli daily-full 600519                # 获取贵州茅台所有历史数据
   python3 -m a_stock_fetcher.cli daily-full-all                   # 获取所有股票所有历史数据
+  python3 -m a_stock_fetcher.cli fund-add 018957                  # 添加自选基金
+  python3 -m a_stock_fetcher.cli fund-update                     # 更新所有自选基金估值
   python3 -m a_stock_fetcher.cli scheduler                        # 启动定时任务
   python3 -m a_stock_fetcher.cli status                            # 查看状态
 """
@@ -175,6 +185,58 @@ def main():
 
     elif cmd == "clean-daily":
         clean_daily_data(limit=limit)
+
+    elif cmd == "fund-add":
+        if not args:
+            print("用法: python3 -m a_stock_fetcher.cli fund-add <基金代码>")
+            return
+        code = args[0].strip()
+        print(f"添加自选基金 {code}...")
+        result = add_watchlist(code)
+        if result['success']:
+            print(f"  添加成功: {code}")
+            est = fetch_fund_estimation(code)
+            print(f"  实时估值: {est}")
+        else:
+            print(f"  添加失败: {result.get('error')}")
+
+    elif cmd == "fund-update":
+        print("=" * 50)
+        print("更新自选基金实时估值...")
+        print("=" * 50)
+        result = fetch_watchlist_estimations()
+        print(f"\n完成: {result['success']}/{result['total']} 成功")
+        if result['failed']:
+            print(f"失败:")
+            for f in result['failed'][:10]:
+                print(f"  {f['code']}: {f['reason']}")
+
+    elif cmd == "fund-remove":
+        if not args:
+            print("用法: python3 -m a_stock_fetcher.cli fund-remove <基金代码>")
+            return
+        code = args[0].strip()
+        if remove_watchlist(code):
+            print(f"已移除 {code}")
+        else:
+            print(f"移除失败: {code} 不在自选列表中")
+
+    elif cmd == "fund-list":
+        from a_stock_db import db, FundWatchlist, FundEstimation
+        session = db.get_session()
+        watchlist = session.query(FundWatchlist).all()
+        if not watchlist:
+            print("自选基金列表为空")
+            session.close()
+            return
+        print(f"{'代码':<10} {'添加时间':<12}")
+        for w in watchlist:
+            latest = session.query(FundEstimation).filter(
+                FundEstimation.code == w.code
+            ).order_by(FundEstimation.date.desc()).first()
+            date = latest.date if latest else '-'
+            print(f"{w.code:<10} {w.added_at.strftime('%Y-%m-%d') if w.added_at else '-':<12}  {date}")
+        session.close()
 
     elif cmd == "scheduler":
         run_scheduler()
