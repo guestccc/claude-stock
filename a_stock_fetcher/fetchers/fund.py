@@ -136,6 +136,17 @@ def fetch_fund_estimation(code: str) -> str:
             }
         )
         session.execute(stmt)
+
+        # 同时更新 fund_basic 的名称（天天基金有名称，蛋卷接口可能失败）
+        fund_name = data.get('name', '')
+        if fund_name:
+            basic_stmt = insert(FundBasic).values(code=code, name=fund_name, updated_at=datetime.now())
+            basic_stmt = basic_stmt.on_conflict_do_update(
+                index_elements=['code'],
+                set_={'name': fund_name, 'updated_at': datetime.now()}
+            )
+            session.execute(basic_stmt)
+
         session.commit()
         return True
 
