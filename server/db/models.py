@@ -39,6 +39,24 @@ class Holding(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
 
+class CostLot(Base):
+    """成本批次 — FIFO 追踪每次买入的股数和成本"""
+    __tablename__ = 'cost_lots'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment='股票代码')
+    tx_id = Column(Integer, nullable=False, comment='关联 Transaction.id')
+    price = Column(Float, nullable=False, comment='买入价格')
+    shares = Column(Integer, nullable=False, comment='剩余股数')
+    cost = Column(Float, nullable=False, comment='剩余成本')
+    date = Column(DateTime, nullable=False, comment='买入日期')
+    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
+
+    __table_args__ = (
+        Index('idx_lot_code', 'code'),
+    )
+
+
 class Transaction(Base):
     """交易记录"""
     __tablename__ = 'transactions'
@@ -50,6 +68,7 @@ class Transaction(Base):
     shares = Column(Integer, nullable=False, comment='成交数量')
     price = Column(Float, nullable=False, comment='成交价格')
     amount = Column(Float, nullable=False, comment='成交金额')
+    fee = Column(Float, default=0, comment='费用/税费')
     date = Column(DateTime, nullable=False, comment='交易日期')
     note = Column(String(200), default='', comment='备注')
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
