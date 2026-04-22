@@ -30,6 +30,10 @@ python3 -m a_stock_fetcher.cli [命令] [参数]
 | `financial [N]` | 更新财务数据，默认 100 条 |
 | `boards` | 更新概念/行业板块 |
 | `cleanup` | 清理过期分时数据 |
+| `fund-add <CODE>` | 添加自选基金（自动获取基本信息+估值） |
+| `fund-update` | 更新所有自选基金实时估值 |
+| `fund-remove <CODE>` | 移除自选基金 |
+| `fund-list` | 查看自选基金列表 |
 | `clean-daily [N]` | 清洗日线数据：补全涨跌幅/涨跌额/振幅 |
 | `rules/rules2/rules3` | 查看配置规则 |
 | `scheduler` | 启动定时任务调度器 |
@@ -67,11 +71,25 @@ python3 -m a_stock_fetcher.cli clean-daily
 
 # 清洗日线数据（限制处理前 100 只）
 python3 -m a_stock_fetcher.cli clean-daily 100
+
+# 添加自选基金
+python3 -m a_stock_fetcher.cli fund-add 018957
+
+# 更新所有自选基金估值
+python3 -m a_stock_fetcher.cli fund-update
+
+# 移除自选基金
+python3 -m a_stock_fetcher.cli fund-remove 018957
+
+# 查看自选基金列表
+python3 -m a_stock_fetcher.cli fund-list
 ```
 
 ## 数据源
 
-- **BaoStock** - 免费、稳定的 A股数据源
+- **BaoStock** - A股日线数据
+- **akshare** - 股票基本信息、分时、财务、板块、交易日历、基金基本信息（蛋卷基金）
+- **天天基金** - 基金实时估值（fundgz.1234567.com.cn）
 
 ## 定时任务
 

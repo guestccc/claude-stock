@@ -9,7 +9,7 @@ router = APIRouter(prefix="/fund", tags=["基金"])
 
 
 class FundHistoryItem(BaseModel):
-    date: str
+    date: Optional[str] = ''
     nav: Optional[float] = None
     est_pct: Optional[float] = None
 
@@ -17,16 +17,16 @@ class FundHistoryItem(BaseModel):
 class FundItem(BaseModel):
     code: str
     name: str
-    fund_type: str = ''
-    company: str = ''
-    manager: str = ''
-    remark: str = ''
-    added_at: str = ''
+    fund_type: Optional[str] = ''
+    company: Optional[str] = ''
+    manager: Optional[str] = ''
+    remark: Optional[str] = ''
+    added_at: Optional[str] = ''
     nav: Optional[float] = None
-    nav_date: str = ''
+    nav_date: Optional[str] = ''
     est_nav: Optional[float] = None
     est_pct: Optional[float] = None
-    update_time: str = ''
+    update_time: Optional[str] = ''
     history: List[FundHistoryItem] = []
     nav_change_pct: Optional[float] = None
 
