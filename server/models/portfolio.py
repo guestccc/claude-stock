@@ -76,6 +76,22 @@ class SellRequest(BaseModel):
     note: Optional[str] = Field("", description="备注")
 
 
+class ClosedPositionItem(BaseModel):
+    """已清仓条目"""
+    code: str
+    name: str
+    total_buy: float
+    total_sell: float
+    profit: float
+    profit_pct: float
+    last_sell_date: str
+
+
+class ClosedPositionsResponse(BaseModel):
+    """已清仓列表响应"""
+    items: List[ClosedPositionItem]
+
+
 class TradeResponse(BaseModel):
     """买卖操作响应"""
     message: str

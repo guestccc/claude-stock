@@ -61,6 +61,26 @@ export async function getHoldings(): Promise<HoldingsResponse> {
   return data
 }
 
+export interface ClosedPositionItem {
+  code: string
+  name: string
+  total_buy: number
+  total_sell: number
+  profit: number
+  profit_pct: number
+  last_sell_date: string
+}
+
+export interface ClosedPositionsResponse {
+  items: ClosedPositionItem[]
+}
+
+/** 获取已清仓列表 */
+export async function getClosedPositions(): Promise<ClosedPositionsResponse> {
+  const { data } = await client.get('/portfolio/closed')
+  return data
+}
+
 /** 买入股票 */
 export async function buyStock(params: {
   code: string

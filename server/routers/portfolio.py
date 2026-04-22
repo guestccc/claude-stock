@@ -6,12 +6,14 @@ from server.services import portfolio_service
 from server.models.portfolio import (
     HoldingsResponse,
     TransactionsResponse,
+    ClosedPositionsResponse,
     BuyRequest,
     SellRequest,
     TradeResponse,
     HoldingItem,
     HoldingSummary,
     TransactionItem,
+    ClosedPositionItem,
 )
 
 router = APIRouter(prefix="/portfolio", tags=["持仓"])
@@ -159,6 +161,15 @@ async def remove_holding(code: str):
         portfolio_service.remove_holding(code)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/closed", response_model=ClosedPositionsResponse)
+async def list_closed_positions():
+    """获取已清仓股票列表（含累计盈亏）"""
+    rows = portfolio_service.get_closed_positions()
+    return ClosedPositionsResponse(
+        items=[ClosedPositionItem(**r) for r in rows]
+    )
 
 
 @router.get("/transactions", response_model=TransactionsResponse)

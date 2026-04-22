@@ -2,12 +2,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getHoldings,
+  getClosedPositions,
   buyStock,
   sellStock,
   getTransactions,
   removeHolding,
   type HoldingsResponse,
   type TransactionItem,
+  type ClosedPositionItem,
 } from '../api/portfolio'
 import { searchStocks, type StockInfo } from '../api/market'
 import { colors, fonts, changeColor, changeSign } from '../theme/tokens'
@@ -28,6 +30,8 @@ function fmtYuan(v: number | null): string {
 // ---------- 类型 ----------
 type TradeTab = 'buy' | 'sell'
 type ActiveSection = 'holdings' | 'transactions'
+type SortKey = 'shares' | 'avg_cost' | 'current_price' | 'market_value' | 'profit_amount' | 'profit_pct' | 'first_buy_date'
+type SortDir = 'asc' | 'desc'
 
 // ---------- 样式 ----------
 const S = {
@@ -251,6 +255,7 @@ export default function PortfolioPage() {
   const [section, setSection] = useState<ActiveSection>('holdings')
   const [tradeTab, setTradeTab] = useState<TradeTab>('buy')
   const [holdings, setHoldings] = useState<HoldingsResponse | null>(null)
+  const [closedPositions, setClosedPositions] = useState<ClosedPositionItem[]>([])
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -265,6 +270,46 @@ export default function PortfolioPage() {
   const [tradeDate, setTradeDate] = useState('')
   const [tradeNote, setTradeNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // 排序
+  const [sortKey, setSortKey] = useState<SortKey>('profit_pct')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+
+  const sortedHoldings = React.useMemo(() => {
+    if (!holdings?.holdings) return []
+    const list = [...holdings.holdings]
+    list.sort((a, b) => {
+      const va = a[sortKey] ?? 0
+      const vb = b[sortKey] ?? 0
+      if (typeof va === 'string' && typeof vb === 'string') {
+        return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+      }
+      return sortDir === 'asc' ? (va as number) - (vb as number) : (vb as number) - (va as number)
+    })
+    return list
+  }, [holdings, sortKey, sortDir])
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+  }
+
+  const sortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return <span style={{ opacity: 0.3, marginLeft: 2 }}>↕</span>
+    return sortDir === 'asc'
+      ? <span style={{ marginLeft: 2 }}>↑</span>
+      : <span style={{ marginLeft: 2 }}>↓</span>
+  }
+
+  const thSortable = (key: SortKey, label: string) => (
+    <th style={{ ...S.th, ...S.thRight, cursor: 'pointer', userSelect: 'none' as const }} onClick={() => toggleSort(key)}>
+      {label}{sortIndicator(key)}
+    </th>
+  )
 
   // 展开持仓的交易记录
   const [expandedCode, setExpandedCode] = useState<string | null>(null)
@@ -281,12 +326,14 @@ export default function PortfolioPage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [h, t] = await Promise.all([
+      const [h, t, c] = await Promise.all([
         getHoldings(),
         getTransactions({ limit: 50 }),
+        getClosedPositions(),
       ])
       setHoldings(h)
       setTransactions(t.transactions)
+      setClosedPositions(c.items)
     } catch (e) {
       showMsg('error', '加载数据失败: ' + (e as Error).message)
     } finally {
@@ -601,18 +648,18 @@ export default function PortfolioPage() {
                 <tr>
                   <th style={S.th}>代码</th>
                   <th style={S.th}>名称</th>
-                  <th style={{ ...S.th, ...S.thRight }}>持仓(股)</th>
-                  <th style={{ ...S.th, ...S.thRight }}>成本价</th>
-                  <th style={{ ...S.th, ...S.thRight }}>现价</th>
-                  <th style={{ ...S.th, ...S.thRight }}>市值</th>
-                  <th style={{ ...S.th, ...S.thRight }}>盈亏额</th>
-                  <th style={{ ...S.th, ...S.thRight }}>盈亏%</th>
-                  <th style={{ ...S.th, ...S.thRight }}>首买日期</th>
+                  {thSortable('shares', '持仓(股)')}
+                  {thSortable('avg_cost', '成本价')}
+                  {thSortable('current_price', '现价')}
+                  {thSortable('market_value', '市值')}
+                  {thSortable('profit_amount', '盈亏额')}
+                  {thSortable('profit_pct', '盈亏%')}
+                  {thSortable('first_buy_date', '首买日期')}
                   <th style={{ ...S.th, textAlign: 'right' as const }}>操作</th>
                 </tr>
               </thead>
               <tbody>
-                {holdings?.holdings.map(h => (
+                {sortedHoldings.map(h => (
                   <React.Fragment key={h.code}>
                   <tr
                     key={h.code}
@@ -686,6 +733,47 @@ export default function PortfolioPage() {
                 ))}
               </tbody>
             </table>
+          )}
+
+          {/* 已清仓 */}
+          {closedPositions.length > 0 && (
+            <>
+              <div style={{ marginTop: 32, marginBottom: 12, fontSize: 13, color: colors.textMuted, fontFamily: fonts.mono }}>已清仓（{closedPositions.length}只）</div>
+              <table style={S.table}>
+                <thead>
+                  <tr>
+                    <th style={S.th}>代码</th>
+                    <th style={S.th}>名称</th>
+                    <th style={{ ...S.th, ...S.thRight }}>累计买入</th>
+                    <th style={{ ...S.th, ...S.thRight }}>累计卖出</th>
+                    <th style={{ ...S.th, ...S.thRight }}>盈亏额</th>
+                    <th style={{ ...S.th, ...S.thRight }}>盈亏%</th>
+                    <th style={{ ...S.th, ...S.thRight }}>最后卖出</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {closedPositions.map(c => (
+                    <tr key={c.code}
+                      style={S.tr}
+                      onMouseEnter={e => (e.currentTarget.style.background = colors.bgHover)}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <td style={S.td}>{c.code}</td>
+                      <td style={{ ...S.td, color: colors.accent }}>{c.name}</td>
+                      <td style={{ ...S.td, ...S.tdRight }}>{fmtYuan(c.total_buy)}</td>
+                      <td style={{ ...S.td, ...S.tdRight }}>{fmtYuan(c.total_sell)}</td>
+                      <td style={{ ...S.td, ...S.tdRight, color: changeColor(c.profit) }}>
+                        {(c.profit >= 0 ? '+' : '') + fmtYuan(c.profit)}
+                      </td>
+                      <td style={{ ...S.td, ...S.tdRight, color: changeColor(c.profit) }}>
+                        {changeSign(c.profit_pct)}
+                      </td>
+                      <td style={{ ...S.td, ...S.tdRight, color: colors.textMuted }}>{c.last_sell_date}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </>
       )}

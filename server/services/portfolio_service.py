@@ -4,6 +4,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from server.db.models import Holding, Transaction, CostLot
+from a_stock_db import StockBasic
 from server.services.market_service import get_stock_name, get_quotes
 
 
@@ -95,7 +96,7 @@ def get_transactions(code: Optional[str] = None, limit: int = 50) -> List[dict]:
         query = session.query(Transaction)
         if code:
             query = query.filter(Transaction.code == code)
-        rows = query.order_by(Transaction.date.asc()).limit(limit).all()
+        rows = query.order_by(Transaction.date.desc()).limit(limit).all()
         return [
             {
                 "id": r.id,
@@ -206,6 +207,7 @@ def buy_stock(
     amount = round(shares * price, 2)
 
     session = _get_session()
+    session.expire_on_commit = False
     try:
         tx = Transaction(
             code=code,
@@ -223,7 +225,6 @@ def buy_stock(
 
         holding = _sync_holding(session, code, name)
         session.commit()
-        session.refresh(holding)
         return holding, tx
     except Exception as e:
         session.rollback()
@@ -255,6 +256,7 @@ def sell_stock(
     amount = round(shares * price, 2)
 
     session = _get_session()
+    session.expire_on_commit = False
     try:
         # 检查可卖数量
         buy_shares = sum(
@@ -287,12 +289,52 @@ def sell_stock(
 
         holding = _sync_holding(session, code, name)
         session.commit()
-        if holding:
-            session.refresh(holding)
         return holding, tx
     except Exception as e:
         session.rollback()
         raise e
+    finally:
+        session.close()
+
+
+# ---------- 已清仓列表 ----------
+
+def get_closed_positions() -> List[dict]:
+    """获取已清仓股票：曾经交易过但现在持仓为0的，含累计盈亏"""
+    session = _get_session()
+    try:
+        # 当前有持仓的股票
+        current_codes = {h.code for h in session.query(Holding.code).all()}
+        # 所有有过交易的股票
+        all_codes = {t.code for t in session.query(Transaction.code).distinct().all()}
+        closed_codes = sorted(all_codes - current_codes)
+
+        result = []
+        for code in closed_codes:
+            buys = session.query(Transaction).filter(
+                Transaction.code == code, Transaction.type == "buy"
+            ).all()
+            sells = session.query(Transaction).filter(
+                Transaction.code == code, Transaction.type == "sell"
+            ).all()
+            total_buy_cost = sum(t.amount + t.fee for t in buys)
+            total_sell_proceeds = sum(t.amount - t.fee for t in sells)
+            profit = total_sell_proceeds - total_buy_cost
+
+            # 股票名称
+            name = session.query(StockBasic).filter(StockBasic.code == code).first()
+            name = name.股票简称 if name else code
+
+            result.append({
+                "code": code,
+                "name": name,
+                "total_buy": round(total_buy_cost, 2),
+                "total_sell": round(total_sell_proceeds, 2),
+                "profit": round(profit, 2),
+                "profit_pct": round(profit / total_buy_cost * 100, 2) if total_buy_cost else 0,
+                "last_sell_date": sells[-1].date.strftime("%Y-%m-%d") if sells else "",
+            })
+        return result
     finally:
         session.close()
 
