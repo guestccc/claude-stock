@@ -6,6 +6,7 @@ import ScreenerPage from './pages/ScreenerPage'
 import BacktestPage from './pages/BacktestPage'
 import PortfolioPage from './pages/PortfolioPage'
 import FundPage from './pages/FundPage'
+import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/backtest/:code" element={<BacktestPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/fund" element={<FundPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   )
