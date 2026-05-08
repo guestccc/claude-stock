@@ -9,3 +9,4 @@ scheduler_status.json
 .DS_Store
 cta-report/data/
 cta-report/backtest/
+node_modules

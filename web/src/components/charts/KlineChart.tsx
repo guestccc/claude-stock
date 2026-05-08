@@ -2,6 +2,7 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
+import type { MarkPointOption } from 'echarts';
 import type { DailyBar } from '../../api/market';
 import {
   computeIndicators,
@@ -40,10 +41,12 @@ interface Props {
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
   hasMore?: boolean;
+  /** 额外标记点（如买卖点），直接合并到 K 线 series 的 markPoint */
+  extraMarkPoints?: MarkPointOption[];
 }
 
 // ---------- 主组件 ----------
-export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, isLoadingMore, hasMore }: Props) {
+export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, isLoadingMore, hasMore, extraMarkPoints }: Props) {
   const [activeSubs, setActiveSubs] = useState<SubType[]>(['VOL', 'MACD', 'KDJ']);
 
   // ---------- 分页加载：refs ----------
@@ -103,8 +106,8 @@ export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, is
   );
 
   const overlays: OverlayDef[] = useMemo(
-    () => buildOverlays(ohlc, ind.donchian, ind.boll),
-    [ohlc, ind.donchian, ind.boll],
+    () => buildOverlays(ohlc, ind.donchian, ind.boll, ind.ma5, ind.ma10, ind.ma20),
+    [ohlc, ind.donchian, ind.boll, ind.ma5, ind.ma10, ind.ma20],
   );
 
   const overlaySeries = useMemo(
@@ -181,6 +184,7 @@ export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, is
 
   // K 线 series
   const klineSeries = {
+    id: 'kline',
     name: 'K线',
     type: 'candlestick' as const,
     data: ohlc.map((d) => ({
@@ -196,12 +200,12 @@ export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, is
       borderColor0: DOWN_COLOR,
     },
     markPoint:
-      klineMarkPoint.length > 0
+      klineMarkPoint.length > 0 || (extraMarkPoints && extraMarkPoints.length > 0)
         ? {
             symbol: 'pin',
             symbolSize: 40,
             label: { color: '#fff', fontSize: 9, fontWeight: 'bold' as const },
-            data: klineMarkPoint,
+            data: [...klineMarkPoint, ...(extraMarkPoints || [])],
           }
         : undefined,
   };
@@ -235,10 +239,11 @@ export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, is
             const chg = obj.pctChange != null ? obj.pctChange.toFixed(2) : '-';
             val = `开 ${open?.toFixed(2)}  高 ${high?.toFixed(2)}  低 ${low?.toFixed(2)}  收 ${close?.toFixed(2)}  涨幅 ${chg}%`;
           }
-          // 唐奇安通道 / 布林带：从 data._lineType 取轨类型
+          // 通道线 / 均线：从 data._lineType 取类型
           else if (
             seriesName === '唐奇安通道' ||
-            seriesName === '布林带'
+            seriesName === '布林带' ||
+            seriesName === '均线'
           ) {
             const obj = data as { value: number; _lineType: string } | string;
             if (obj !== '-') {

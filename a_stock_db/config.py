@@ -6,6 +6,13 @@ import os
 # 数据库
 DB_PATH = os.path.join(os.path.dirname(__file__), "a_stock.db")
 
+# 日线数据源: "baostock" | "mxdata"
+# 可通过环境变量 DAILY_DATA_SOURCE 覆盖
+DAILY_DATA_SOURCE = os.getenv("DAILY_DATA_SOURCE", "mxdata")
+
+# 妙想 API Key（优先从环境变量 MX_APIKEY 读取）
+MX_APIKEY = os.getenv("MX_APIKEY", "")
+
 # 分时数据保留天数
 MINUTE_KEEP_DAYS = 5
 

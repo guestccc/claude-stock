@@ -2,6 +2,7 @@
 import type { MarkPointOption } from 'echarts';
 import type { OHLCData } from './indicators';
 import { findOverlayById } from './overlays';
+import { BREAKOUT_SYMBOL, BREAKDOWN_SYMBOL } from '../../theme/tokens';
 
 // ---------- 接口 ----------
 export interface MarkStyle {
@@ -54,9 +55,11 @@ const breakoutMark: MarkDef = {
         marks.push({
           coord: [i, close],
           value: '突破',
-          symbol: 'pin',
-          symbolSize: 40,
-          label: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
+          symbol: BREAKOUT_SYMBOL,
+          symbolSize: 28,
+          symbolOffset: [0, -30],
+          itemStyle: { opacity: 0.5 },
+          label: { show: false },
         });
       }
     }
@@ -96,10 +99,11 @@ const dcBreakoutMark: MarkDef = {
         marks.push({
           coord: [i, close],
           value: '突破',
-          symbol: 'pin',
-          symbolSize: 40,
-          itemStyle: { color: '#f5a742' },
-          label: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
+          symbol: BREAKOUT_SYMBOL,
+          symbolSize: 28,
+          symbolOffset: [0, -30],
+          itemStyle: { opacity: 0.5 },
+          label: { show: false },
         });
       }
     }
@@ -132,10 +136,11 @@ const breakdownMark: MarkDef = {
         marks.push({
           coord: [i, close],
           value: '破位',
-          symbol: 'pin',
-          symbolSize: 40,
-          itemStyle: { color: '#3498db' },
-          label: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
+          symbol: BREAKDOWN_SYMBOL,
+          symbolSize: 28,
+          symbolOffset: [0, 30],
+          itemStyle: { opacity: 0.5 },
+          label: { show: false },
         });
       }
     }

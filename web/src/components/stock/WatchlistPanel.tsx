@@ -14,7 +14,7 @@ const S = {
   panel: {
     width: 240,
     background: colors.bgCard,
-    borderRadius: 8,
+    borderRadius: '0 0 8px 8px',
     display: 'flex',
     flexDirection: 'column' as const,
     overflow: 'hidden',

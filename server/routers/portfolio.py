@@ -10,6 +10,8 @@ from server.models.portfolio import (
     BuyRequest,
     SellRequest,
     TradeResponse,
+    BatchImportRequest,
+    BatchImportResponse,
     HoldingItem,
     HoldingSummary,
     TransactionItem,
@@ -161,6 +163,16 @@ async def remove_holding(code: str):
         portfolio_service.remove_holding(code)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/batch-import", response_model=BatchImportResponse)
+async def batch_import(body: BatchImportRequest):
+    """批量导入交易记录（粘贴文本解析）"""
+    try:
+        result = portfolio_service.batch_import(body.text)
+        return BatchImportResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"批量导入失败: {e}")
 
 
 @router.get("/closed", response_model=ClosedPositionsResponse)

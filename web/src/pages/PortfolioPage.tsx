@@ -7,9 +7,11 @@ import {
   sellStock,
   getTransactions,
   removeHolding,
+  batchImport,
   type HoldingsResponse,
   type TransactionItem,
   type ClosedPositionItem,
+  type BatchImportResponse,
 } from '../api/portfolio'
 import { searchStocks, type StockInfo } from '../api/market'
 import { colors, fonts, changeColor, changeSign } from '../theme/tokens'
@@ -28,7 +30,7 @@ function fmtYuan(v: number | null): string {
 }
 
 // ---------- 类型 ----------
-type TradeTab = 'buy' | 'sell'
+type TradeTab = 'buy' | 'sell' | 'batch'
 type ActiveSection = 'holdings' | 'transactions'
 type SortKey = 'shares' | 'avg_cost' | 'current_price' | 'market_value' | 'profit_amount' | 'profit_pct' | 'first_buy_date'
 type SortDir = 'asc' | 'desc'
@@ -271,6 +273,11 @@ export default function PortfolioPage() {
   const [tradeNote, setTradeNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // 批量录入
+  const [batchText, setBatchText] = useState('')
+  const [batchResult, setBatchResult] = useState<BatchImportResponse | null>(null)
+  const [batchSubmitting, setBatchSubmitting] = useState(false)
+
   // 排序
   const [sortKey, setSortKey] = useState<SortKey>('profit_pct')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -403,6 +410,30 @@ export default function PortfolioPage() {
     setSearchResults([])
   }
 
+  const handleBatchImport = async () => {
+    if (!batchText.trim()) {
+      showMsg('error', '请粘贴交易记录文本')
+      return
+    }
+    setBatchSubmitting(true)
+    setBatchResult(null)
+    try {
+      const res = await batchImport(batchText)
+      setBatchResult(res)
+      if (res.fail_count === 0) {
+        showMsg('success', `全部录入成功：${res.success_count} 条`)
+        setBatchText('')
+      } else {
+        showMsg('error', `成功 ${res.success_count} 条，失败 ${res.fail_count} 条`)
+      }
+      await loadData()
+    } catch (e: any) {
+      showMsg('error', e?.response?.data?.detail || (e as Error).message || '导入失败')
+    } finally {
+      setBatchSubmitting(false)
+    }
+  }
+
   const handleSubmit = async () => {
     if (!tradeCode || !tradeShares || !tradePrice) {
       showMsg('error', '请填写完整的交易信息')
@@ -529,112 +560,201 @@ export default function PortfolioPage() {
               >
                 卖出
               </button>
+              <button
+                style={S.tab(tradeTab === 'batch')}
+                onClick={() => { setTradeTab('batch'); setBatchResult(null) }}
+              >
+                批量录入
+              </button>
             </div>
 
             {msg && <div style={S.msg(msg.type)}>{msg.text}</div>}
 
-            <div style={S.tradeGrid}>
-              {/* 股票搜索 */}
-              <div style={S.field}>
-                <span style={S.label}>股票代码/名称</span>
-                <div ref={searchRef} style={S.searchWrap}>
-                  <input
-                    style={S.input}
-                    placeholder="输入代码或名称搜索..."
-                    value={tradeCode}
-                    onChange={e => handleCodeChange(e.target.value)}
-                    onFocus={() => tradeCode && handleCodeChange(tradeCode)}
+            {tradeTab === 'batch' ? (
+              /* 批量录入面板 */
+              <>
+                <div style={S.field}>
+                  <span style={S.label}>粘贴交易记录（支持券商截图识别格式）</span>
+                  <textarea
+                    style={{
+                      ...S.input,
+                      minHeight: 180,
+                      resize: 'vertical',
+                      fontFamily: fonts.mono,
+                      fontSize: 12,
+                      lineHeight: 1.6,
+                    }}
+                    placeholder={`示例格式：\n2026-04-23 14:17 卖出 天创时尚 13.000 100 1,300.00 0.78\n2026-04-23 11:13 买入 永太科技 25.460 100 2,546.00 0.25`}
+                    value={batchText}
+                    onChange={e => setBatchText(e.target.value)}
                   />
-                  {searchResults.length > 0 && (
-                    <div style={S.searchDropdown}>
-                      {searchResults.map(r => (
-                        <div
-                          key={r.code}
-                          style={S.searchItem}
-                          onMouseDown={() => selectStock(r)}
-                        >
-                          <span>{r.code}</span>
-                          <span style={{ color: colors.textMuted }}>{r.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
-                {tradeName && <span style={{ fontSize: 11, color: colors.accent, fontFamily: fonts.mono }}>{tradeName}</span>}
-              </div>
+                <button
+                  style={S.btn(colors.accent)}
+                  onClick={handleBatchImport}
+                  disabled={batchSubmitting || !batchText.trim()}
+                >
+                  {batchSubmitting ? '录入中...' : '解析并录入'}
+                </button>
 
-              <div style={S.field}>
-                <span style={S.label}>数量（股）</span>
-                <input
-                  style={S.input}
-                  type="number"
-                  min="1"
-                  placeholder="100"
-                  value={tradeShares}
-                  onChange={e => setTradeShares(e.target.value)}
-                />
-              </div>
+                {/* 录入结果 */}
+                {batchResult && (
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ fontSize: 12, color: colors.textMuted, fontFamily: fonts.mono, marginBottom: 8 }}>
+                      解析 {batchResult.total} 条 | 成功 {batchResult.success_count} | 失败 {batchResult.fail_count}
+                    </div>
+                    {batchResult.results.length > 0 && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fonts.mono }}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...S.th, padding: '4px 8px' }}>状态</th>
+                            <th style={{ ...S.th, padding: '4px 8px' }}>日期</th>
+                            <th style={{ ...S.th, padding: '4px 8px' }}>方向</th>
+                            <th style={{ ...S.th, padding: '4px 8px' }}>股票</th>
+                            <th style={{ ...S.th, padding: '4px 8px', textAlign: 'right' }}>价格</th>
+                            <th style={{ ...S.th, padding: '4px 8px', textAlign: 'right' }}>数量</th>
+                            <th style={{ ...S.th, padding: '4px 8px', textAlign: 'right' }}>费用</th>
+                            <th style={{ ...S.th, padding: '4px 8px' }}>备注</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {batchResult.results.map((r, i) => (
+                            <tr key={i}>
+                              <td style={{ ...S.td, padding: '4px 8px', color: r.success ? colors.rise : colors.fall, fontWeight: 600 }}>
+                                {r.success ? 'OK' : 'FAIL'}
+                              </td>
+                              <td style={{ ...S.td, padding: '4px 8px' }}>{r.date}</td>
+                              <td style={{
+                                ...S.td, padding: '4px 8px',
+                                color: r.type === 'buy' ? colors.rise : colors.fall,
+                                fontWeight: 600,
+                              }}>
+                                {r.type === 'buy' ? '买入' : '卖出'}
+                              </td>
+                              <td style={{ ...S.td, padding: '4px 8px' }}>
+                                {r.name}{r.code ? `(${r.code})` : ''}
+                              </td>
+                              <td style={{ ...S.td, padding: '4px 8px', textAlign: 'right' }}>{fmtYuan(r.price)}</td>
+                              <td style={{ ...S.td, padding: '4px 8px', textAlign: 'right' }}>{r.shares}</td>
+                              <td style={{ ...S.td, padding: '4px 8px', textAlign: 'right' }}>{fmtYuan(r.fee)}</td>
+                              <td style={{ ...S.td, padding: '4px 8px', color: r.success ? colors.textMuted : colors.fall, fontSize: 11 }}>
+                                {r.success ? '' : r.error}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              /* 买入/卖出表单 */
+              <>
+                <div style={S.tradeGrid}>
+                  {/* 股票搜索 */}
+                  <div style={S.field}>
+                    <span style={S.label}>股票代码/名称</span>
+                    <div ref={searchRef} style={S.searchWrap}>
+                      <input
+                        style={S.input}
+                        placeholder="输入代码或名称搜索..."
+                        value={tradeCode}
+                        onChange={e => handleCodeChange(e.target.value)}
+                        onFocus={() => tradeCode && handleCodeChange(tradeCode)}
+                      />
+                      {searchResults.length > 0 && (
+                        <div style={S.searchDropdown}>
+                          {searchResults.map(r => (
+                            <div
+                              key={r.code}
+                              style={S.searchItem}
+                              onMouseDown={() => selectStock(r)}
+                            >
+                              <span>{r.code}</span>
+                              <span style={{ color: colors.textMuted }}>{r.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {tradeName && <span style={{ fontSize: 11, color: colors.accent, fontFamily: fonts.mono }}>{tradeName}</span>}
+                  </div>
 
-              <div style={S.field}>
-                <span style={S.label}>价格（元）</span>
-                <input
-                  style={S.input}
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  placeholder="10.00"
-                  value={tradePrice}
-                  onChange={e => setTradePrice(e.target.value)}
-                />
-              </div>
+                  <div style={S.field}>
+                    <span style={S.label}>数量（股）</span>
+                    <input
+                      style={S.input}
+                      type="number"
+                      min="1"
+                      placeholder="100"
+                      value={tradeShares}
+                      onChange={e => setTradeShares(e.target.value)}
+                    />
+                  </div>
 
-              <div style={S.field}>
-                <span style={S.label}>费用/税费（元）</span>
-                <input
-                  style={S.input}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0"
-                  value={tradeFee}
-                  onChange={e => setTradeFee(e.target.value)}
-                />
-              </div>
+                  <div style={S.field}>
+                    <span style={S.label}>价格（元）</span>
+                    <input
+                      style={S.input}
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="10.00"
+                      value={tradePrice}
+                      onChange={e => setTradePrice(e.target.value)}
+                    />
+                  </div>
 
-              <div style={S.field}>
-                <span style={S.label}>日期（选填，默认今天）</span>
-                <input
-                  style={S.input}
-                  type="date"
-                  value={tradeDate}
-                  onChange={e => setTradeDate(e.target.value)}
-                />
-              </div>
+                  <div style={S.field}>
+                    <span style={S.label}>费用/税费（元）</span>
+                    <input
+                      style={S.input}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0"
+                      value={tradeFee}
+                      onChange={e => setTradeFee(e.target.value)}
+                    />
+                  </div>
 
-              <div style={{ gridColumn: '1 / -1', ...S.field }}>
-                <span style={S.label}>备注（选填）</span>
-                <input
-                  style={S.input}
-                  placeholder="备注..."
-                  value={tradeNote}
-                  onChange={e => setTradeNote(e.target.value)}
-                />
-              </div>
-            </div>
+                  <div style={S.field}>
+                    <span style={S.label}>日期（选填，默认今天）</span>
+                    <input
+                      style={S.input}
+                      type="date"
+                      value={tradeDate}
+                      onChange={e => setTradeDate(e.target.value)}
+                    />
+                  </div>
 
-            {tradeShares && tradePrice && (
-              <div style={{ textAlign: 'right', fontSize: 12, color: colors.textMuted, fontFamily: fonts.mono, marginBottom: 12 }}>
-                成交金额 ≈ {fmtYuan(parseFloat(tradeShares) * parseFloat(tradePrice))} 元
-              </div>
+                  <div style={{ gridColumn: '1 / -1', ...S.field }}>
+                    <span style={S.label}>备注（选填）</span>
+                    <input
+                      style={S.input}
+                      placeholder="备注..."
+                      value={tradeNote}
+                      onChange={e => setTradeNote(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {tradeShares && tradePrice && (
+                  <div style={{ textAlign: 'right', fontSize: 12, color: colors.textMuted, fontFamily: fonts.mono, marginBottom: 12 }}>
+                    成交金额 ≈ {fmtYuan(parseFloat(tradeShares) * parseFloat(tradePrice))} 元
+                  </div>
+                )}
+
+                <button
+                  style={S.btn(tradeTab === 'buy' ? colors.rise : colors.fall)}
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                >
+                  {submitting ? '处理中...' : tradeTab === 'buy' ? `确认买入` : `确认卖出`}
+                </button>
+              </>
             )}
-
-            <button
-              style={S.btn(tradeTab === 'buy' ? colors.rise : colors.fall)}
-              onClick={handleSubmit}
-              disabled={submitting}
-            >
-              {submitting ? '处理中...' : tradeTab === 'buy' ? `确认买入` : `确认卖出`}
-            </button>
           </div>
 
           {/* 持仓列表 */}

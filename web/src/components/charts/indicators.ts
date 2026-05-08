@@ -145,6 +145,18 @@ export interface Indicators {
   kdj: KDJResult[];
   donchian: (ChannelResult | null)[];
   boll: (ChannelResult | null)[];
+  ma5: (number | null)[];
+  ma10: (number | null)[];
+  ma20: (number | null)[];
+}
+
+// ---------- 简单移动平均线 ----------
+export function ma(closes: number[], period: number): (number | null)[] {
+  return closes.map((_, i) => {
+    if (i < period - 1) return null;
+    const slice = closes.slice(i - period + 1, i + 1);
+    return slice.reduce((a, b) => a + b, 0) / period;
+  });
 }
 
 export function computeIndicators(
@@ -169,6 +181,9 @@ export function computeIndicators(
     kdj: needKDJ ? kdj(highs, lows, closes) : [],
     donchian: donchian(highs, lows, 20),
     boll: boll(closes, 20, 2),
+    ma5: ma(closes, 5),
+    ma10: ma(closes, 10),
+    ma20: ma(closes, 20),
   };
 }
 

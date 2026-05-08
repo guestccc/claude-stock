@@ -1,6 +1,7 @@
-"""服务端 ORM 模型 — 自选股、持仓、交易记录"""
+"""服务端 ORM 模型 — 自选股、持仓、交易记录、回测结果"""
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, Index
+from sqlalchemy import Column, Integer, String, Float, DateTime, Index, Text, ForeignKey
+from sqlalchemy.orm import relationship
 from a_stock_db.database import Base
 
 # 复用 a_stock_db 的 Base 和 db 实例，同一个 SQLite 数据库文件
@@ -77,6 +78,83 @@ class Transaction(Base):
         Index('idx_tx_code', 'code'),
         Index('idx_tx_date', 'date'),
     )
+
+
+class BacktestResult(Base):
+    """回测结果（用户手动保存）"""
+    __tablename__ = 'backtest_results'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment='股票代码')
+    name = Column(String(50), nullable=False, comment='股票名称')
+    start_date = Column(String(10), nullable=False, comment='回测开始日期')
+    end_date = Column(String(10), nullable=False, comment='回测结束日期')
+    initial_capital = Column(Float, nullable=False, default=100000, comment='初始本金')
+    exit_strategy = Column(String(30), nullable=False, comment='出场策略')
+    tp_multiplier = Column(Float, nullable=False, default=2.0, comment='止盈倍数')
+    trailing_atr_k = Column(Float, nullable=False, default=1.0, comment='跟踪止损ATR系数')
+    half_exit_pct = Column(Float, nullable=False, default=50, comment='半仓止盈比例%')
+
+    # 统计指标 JSON
+    stats_json = Column(Text, nullable=False, default='{}', comment='统计指标JSON')
+    # 净值曲线 JSON
+    equity_curve_json = Column(Text, nullable=False, default='[]', comment='净值曲线JSON')
+    # K线数据 JSON（可选，可能较大）
+    klines_json = Column(Text, nullable=True, comment='K线数据JSON')
+
+    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
+
+    # 关联交易明细
+    trades = relationship('BacktestTrade', backref='result',
+                          cascade='all, delete-orphan',
+                          lazy='select')
+
+    __table_args__ = (
+        Index('idx_bt_code', 'code'),
+        Index('idx_bt_strategy', 'exit_strategy'),
+        Index('idx_bt_created', 'created_at'),
+    )
+
+
+class BacktestTrade(Base):
+    """回测单笔交易明细"""
+    __tablename__ = 'backtest_trades'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    backtest_id = Column(Integer, ForeignKey('backtest_results.id'), nullable=False, comment='关联回测ID')
+
+    entry_date = Column(String(10), nullable=False, comment='买入日期')
+    exit_date = Column(String(10), nullable=False, comment='卖出日期')
+    entry_price = Column(Float, nullable=False, comment='买入价')
+    exit_price = Column(Float, nullable=False, comment='卖出价')
+    stop_loss = Column(Float, nullable=False, comment='止损价')
+    take_profit = Column(Float, nullable=False, comment='止盈价')
+    shares = Column(Integer, nullable=False, comment='股数')
+    pnl = Column(Float, nullable=False, comment='盈亏金额')
+    pnl_r = Column(Float, nullable=False, comment='R值')
+    holding_days = Column(Integer, nullable=False, comment='持有天数')
+    reason = Column(String(20), nullable=False, comment='平仓原因')
+    atr = Column(Float, nullable=False, comment='入场时ATR')
+    upper_band = Column(Float, nullable=False, default=0, comment='唐奇安上轨')
+    breakout_close = Column(Float, nullable=False, default=0, comment='突破日收盘价')
+    breakout_exceed_pct = Column(Float, nullable=False, default=0, comment='突破超幅%')
+    exit_formula = Column(Text, nullable=False, default='', comment='卖出触发公式说明')
+
+    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
+
+    __table_args__ = (
+        Index('idx_bt_trade_backtest_id', 'backtest_id'),
+    )
+
+
+class BacktestRecentStock(Base):
+    """回测最近运行的股票（每次运行自动更新）"""
+    __tablename__ = 'backtest_recent_stocks'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, unique=True, comment='股票代码')
+    name = Column(String(50), nullable=False, comment='股票名称')
+    last_run_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='最近运行时间')
 
 
 def init_tables():

@@ -6,6 +6,7 @@
 - [a_stock_db](./a_stock_db/README.md) | [Skill](./.claude/skills/a-stock-db/SKILL.md)
 - [a_stock_fetcher](./a_stock_fetcher/README.md) | [Skill](./.claude/skills/a-stock-fetcher/SKILL.md)
 - [cta_report](./cta-report/README.md) | [Skill](./.claude/skills/cta-report.md)
+- [server](./server/README.md)
 
 ---
 
@@ -101,6 +102,27 @@ python3 cli.py [命令]
 | `backtest [--code/--codes] [--start] [--end] [--capital]` | 回测指定股票 |
 | `rules` | 查看现有回测规则 |
 | `test` | 运行测试 |
+
+---
+
+### 4. server - FastAPI 服务端
+
+**作用**: 为前端 Web 应用提供 REST API，管理持仓、回测、自选股等业务数据
+
+**相关文档**: [README](./server/README.md)
+
+**核心功能**:
+- 行情数据查询（日K/分时/实时/板块）
+- 持仓管理（买入/卖出/交易记录/批量导入/已清仓统计）
+- 自选股管理
+- 回测管理（创建/运行/保存）
+- 系统任务（数据更新/定时调度）
+
+**启动方式**:
+```bash
+cd /Users/jschen/Desktop/person/claude-study
+python3 -m uvicorn server.main:app --host :: --port 8000 --reload
+```
 
 ---
 

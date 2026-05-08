@@ -120,3 +120,28 @@ export async function getTransactions(params?: {
 export async function removeHolding(code: string): Promise<void> {
   await client.delete(`/portfolio/holdings/${code}`)
 }
+
+export interface BatchImportResultItem {
+  success: boolean
+  name: string
+  code: string
+  type: 'buy' | 'sell'
+  price: number
+  shares: number
+  fee: number
+  date: string
+  error: string
+}
+
+export interface BatchImportResponse {
+  total: number
+  success_count: number
+  fail_count: number
+  results: BatchImportResultItem[]
+}
+
+/** 批量导入交易记录 */
+export async function batchImport(text: string): Promise<BatchImportResponse> {
+  const { data } = await client.post('/portfolio/batch-import', { text })
+  return data
+}

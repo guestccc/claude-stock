@@ -72,15 +72,40 @@ function bollOverlay(
   };
 }
 
+// ---------- 均线 ----------
+function maOverlay(
+  ma5: (number | null)[],
+  ma10: (number | null)[],
+  ma20: (number | null)[],
+): OverlayDef {
+  const toLine = (values: (number | null)[], lineType: string, color: string) =>
+    buildLine('均线', lineType, color, 'solid', values.map((v) => v ?? '-'));
+
+  return {
+    id: 'ma',
+    legendName: '均线',
+    color: '#f5e642', // 不影响单条线颜色，仅做标识
+    lines: [
+      toLine(ma5, 'MA5', '#f5e642'),
+      toLine(ma10, 'MA10', '#42c6f5'),
+      toLine(ma20, 'MA20', '#f542a7'),
+    ],
+  };
+}
+
 // ---------- 注册表构建 ----------
 export function buildOverlays(
   ohlc: OHLCData[],
   dcData: (ChannelResult | null)[],
   bollData: (ChannelResult | null)[],
+  ma5?: (number | null)[],
+  ma10?: (number | null)[],
+  ma20?: (number | null)[],
 ): OverlayDef[] {
   return [
     donchianOverlay(20, '#f5a742', ohlc, dcData),
     bollOverlay(20, 2, '#9b59b6', bollData),
+    ...(ma5 && ma10 && ma20 ? [maOverlay(ma5, ma10, ma20)] : []),
   ];
 }
 
@@ -89,6 +114,7 @@ export function buildOverlays(
 export function overlayToSeries(overlays: OverlayDef[]): EChartsSeriesOption[] {
   return overlays.flatMap((o) =>
     o.lines.map((line) => ({
+      id: `${o.id}-${line.lineType}`,
       name: o.legendName,
       data: line.values.map((v) =>
         v === '-' ? '-' : { value: v, _lineType: line.lineType },

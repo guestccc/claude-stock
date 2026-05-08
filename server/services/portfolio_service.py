@@ -1,4 +1,5 @@
 """持仓服务：买入/卖出/查询（_fifo）"""
+import re
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -350,6 +351,146 @@ def remove_holding(code: str) -> None:
         session.commit()
     finally:
         session.close()
+
+
+# ---------- 批量导入 ----------
+
+def _build_name_to_code_map() -> dict:
+    """构建 股票名称 → 代码 的映射"""
+    from a_stock_db.database import db
+    session = db.get_session()
+    try:
+        rows = session.query(StockBasic).all()
+        return {r.股票简称: r.code for r in rows if r.股票简称}
+    finally:
+        session.close()
+
+
+def _parse_trade_text(text: str) -> list[dict]:
+    """解析交易记录文本为结构化列表。
+    支持格式：YYYY-MM-DD HH:MM 买入/卖出 股票名 价格 数量 金额 费用
+    """
+    # 匹配: 日期 时间 类型 名称 价格 数量 金额 费用
+    pattern = re.compile(
+        r'(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+'   # 日期 + 时间
+        r'(买入|卖出)\s+'                              # 交易类型
+        r'(\S+)\s+'                                    # 股票名称
+        r'([\d,]+\.?\d*)\s+'                           # 价格（可能含千分位逗号）
+        r'(\d+)\s+'                                    # 数量
+        r'([\d,]+\.?\d*)\s+'                           # 金额（可能含千分位逗号）
+        r'([\d,]+\.?\d*)'                              # 费用（可能含千分位逗号）
+    )
+
+    trades = []
+    for line in text.strip().splitlines():
+        line = line.strip()
+        m = pattern.search(line)
+        if not m:
+            continue
+
+        date_str = m.group(1)       # 2026-04-23
+        time_str = m.group(2)       # 14:17
+        trade_type = m.group(3)     # 买入 / 卖出
+        stock_name = m.group(4)     # 天创时尚
+        price = float(m.group(5).replace(',', ''))    # 13.000
+        shares = int(m.group(6))                       # 100
+        # amount = float(m.group(7).replace(',', ''))  # 不用，由 shares * price 计算
+        fee = float(m.group(8).replace(',', ''))       # 0.78
+
+        trades.append({
+            'date': date_str,
+            'time': time_str,
+            'type': 'buy' if trade_type == '买入' else 'sell',
+            'name': stock_name,
+            'price': price,
+            'shares': shares,
+            'fee': fee,
+            'note': f"{time_str}{trade_type}",
+        })
+
+    # 按日期+时间正序（先发生的先录入，保证卖出校验正确）
+    trades.sort(key=lambda t: f"{t['date']} {t['time']}")
+    return trades
+
+
+def batch_import(text: str) -> dict:
+    """批量解析并录入交易记录。
+    返回 { total, success_count, fail_count, results: [...] }
+    """
+    trades = _parse_trade_text(text)
+    if not trades:
+        return {"total": 0, "success_count": 0, "fail_count": 0, "results": []}
+
+    # 构建名称→代码映射
+    name_map = _build_name_to_code_map()
+
+    results = []
+    for t in trades:
+        code = name_map.get(t['name'])
+        if not code:
+            results.append({
+                "success": False,
+                "name": t['name'],
+                "code": "",
+                "type": t['type'],
+                "price": t['price'],
+                "shares": t['shares'],
+                "fee": t['fee'],
+                "date": t['date'],
+                "error": f"未找到股票「{t['name']}」的代码",
+            })
+            continue
+
+        try:
+            if t['type'] == 'buy':
+                buy_stock(
+                    code=code,
+                    shares=t['shares'],
+                    price=t['price'],
+                    fee=t['fee'],
+                    date=t['date'],
+                    note=t['note'],
+                )
+            else:
+                sell_stock(
+                    code=code,
+                    shares=t['shares'],
+                    price=t['price'],
+                    fee=t['fee'],
+                    date=t['date'],
+                    note=t['note'],
+                )
+            results.append({
+                "success": True,
+                "name": t['name'],
+                "code": code,
+                "type": t['type'],
+                "price": t['price'],
+                "shares": t['shares'],
+                "fee": t['fee'],
+                "date": t['date'],
+                "error": "",
+            })
+        except Exception as e:
+            results.append({
+                "success": False,
+                "name": t['name'],
+                "code": code,
+                "type": t['type'],
+                "price": t['price'],
+                "shares": t['shares'],
+                "fee": t['fee'],
+                "date": t['date'],
+                "error": str(e),
+            })
+
+    success_count = sum(1 for r in results if r['success'])
+    return {
+        "total": len(results),
+        "success_count": success_count,
+        "fail_count": len(results) - success_count,
+        "results": results,
+    }
 
 
 # ---------- 内部工具 ----------

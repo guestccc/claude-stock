@@ -97,3 +97,29 @@ class TradeResponse(BaseModel):
     message: str
     holding: Optional[HoldingItem] = None
     transaction: TransactionItem
+
+
+class BatchImportRequest(BaseModel):
+    """批量导入请求"""
+    text: str = Field(..., description="交易记录文本（粘贴自券商截图识别结果）")
+
+
+class BatchImportResultItem(BaseModel):
+    """单条批量导入结果"""
+    success: bool
+    name: str = ""
+    code: str = ""
+    type: str = ""  # buy / sell
+    price: float = 0
+    shares: int = 0
+    fee: float = 0
+    date: str = ""
+    error: str = ""
+
+
+class BatchImportResponse(BaseModel):
+    """批量导入响应"""
+    total: int = Field(..., description="解析到的记录数")
+    success_count: int = Field(..., description="成功录入数")
+    fail_count: int = Field(..., description="失败数")
+    results: List[BatchImportResultItem] = Field(default_factory=list)
