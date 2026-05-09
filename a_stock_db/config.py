@@ -6,9 +6,12 @@ import os
 # 数据库
 DB_PATH = os.path.join(os.path.dirname(__file__), "a_stock.db")
 
-# 日线数据源: "baostock" | "mxdata"
+# 日线数据源: "baostock" | "mxdata" | "akshare"
 # 可通过环境变量 DAILY_DATA_SOURCE 覆盖
-DAILY_DATA_SOURCE = os.getenv("DAILY_DATA_SOURCE", "mxdata")
+# akshare: 无限制，数据来源于东方财富（推荐）
+# mxdata: 妙想 API，150次/天（备选）
+# baostock: 已不稳定（备用）
+DAILY_DATA_SOURCE = os.getenv("DAILY_DATA_SOURCE", "akshare")
 
 # 妙想 API Key（优先从环境变量 MX_APIKEY 读取）
 MX_APIKEY = os.getenv("MX_APIKEY", "")

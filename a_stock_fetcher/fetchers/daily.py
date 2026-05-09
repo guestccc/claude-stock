@@ -19,8 +19,8 @@ def _build_daily_dict(code: str, record: dict, source: str) -> dict:
     """
     将标准化记录构建为数据库写入格式
     :param code: 股票代码
-    :param record: provider 返回的标准化记录 {date, open, close, high, low, volume, amount}
-    :param source: 数据源名称（如 "baostock", "mxdata"）
+    :param record: provider 返回的标准化记录 {date, open, close, high, low, volume, amount, amplitude, pct_change, change, turnover}
+    :param source: 数据源名称（如 "baostock", "mxdata", "akshare"）
     :return: 数据库记录字典
     """
     trade_date = pd.to_datetime(record['date'])
@@ -33,10 +33,10 @@ def _build_daily_dict(code: str, record: dict, source: str) -> dict:
         "最低": record.get('low'),
         "成交量": record.get('volume'),
         "成交额": record.get('amount'),
-        "振幅": None,
-        "涨跌幅": None,
-        "涨跌额": None,
-        "换手率": None,
+        "振幅": record.get('amplitude'),
+        "涨跌幅": record.get('pct_change'),
+        "涨跌额": record.get('change'),
+        "换手率": record.get('turnover'),
         "created_at": datetime.now(),
         "raw_data": json.dumps({
             "source": source,

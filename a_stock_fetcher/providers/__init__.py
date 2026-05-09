@@ -20,8 +20,11 @@ def get_provider(source: str = None) -> DailyDataProvider:
     elif source == "mxdata":
         from .mxdata_provider import MxDataProvider
         return MxDataProvider()
+    elif source == "akshare":
+        from .akshare_provider import AkShareProvider
+        return AkShareProvider()
     else:
-        raise ValueError(f"未知数据源: {source}，支持: baostock, mxdata")
+        raise ValueError(f"未知数据源: {source}，支持: baostock, mxdata, akshare")
 
 
 __all__ = ['DailyDataProvider', 'get_provider']
