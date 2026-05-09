@@ -278,6 +278,25 @@ class FundEstimation(Base):
     )
 
 
+class FundNavHistory(Base):
+    """
+    基金历史净值缓存表
+    数据来源: akshare fund_open_fund_info_em（全量拉取，按需刷新）
+    """
+    __tablename__ = 'fund_nav_history'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment='基金代码')
+    date = Column(String(10), nullable=False, comment='净值日期 YYYY-MM-DD')
+    nav = Column(Float, comment='单位净值')
+    pct_change = Column(Float, comment='日增长率%')
+
+    __table_args__ = (
+        UniqueConstraint('code', 'date', name='uq_fund_nav_date'),
+        Index('idx_fund_nav_code', 'code'),
+    )
+
+
 class CTADonchianScan(Base):
     """
     CTA 唐奇安扫描结果表

@@ -16,6 +16,7 @@ from .database import (
     FundBasic,
     FundWatchlist,
     FundEstimation,
+    FundNavHistory,
     DatabaseManager,
 )
 from .config import (
@@ -46,6 +47,7 @@ __all__ = [
     'FundBasic',
     'FundWatchlist',
     'FundEstimation',
+    'FundNavHistory',
     # 配置
     'DB_PATH',
     'MINUTE_KEEP_DAYS',

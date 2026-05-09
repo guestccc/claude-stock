@@ -6,11 +6,12 @@
 import re
 import time
 import json
+import pandas as pd
 import requests
 import akshare as ak
 from datetime import datetime
 from sqlalchemy.dialects.sqlite import insert
-from a_stock_db.database import db, to_json, FundBasic, FundWatchlist, FundEstimation
+from a_stock_db.database import db, to_json, FundBasic, FundWatchlist, FundEstimation, FundNavHistory
 
 # 天天基金实时估值接口
 TTFUND_API = 'https://fundgz.1234567.com.cn/js/{code}.js'
@@ -245,7 +246,138 @@ def get_watchlist_codes() -> list:
         session.close()
 
 
+def _fetch_and_cache_nav_history(code: str) -> bool:
+    """
+    从 akshare 拉取基金全量历史净值，写入 fund_nav_history 缓存表。
+    akshare 的 period 参数不生效，始终返回全量，所以这里固定传 '成立来'。
+    """
+    session = db.get_session()
+    try:
+        df = ak.fund_open_fund_info_em(symbol=code, indicator='单位净值走势', period='成立来')
+        if df is None or df.empty:
+            return False
+
+        for _, row in df.iterrows():
+            stmt = insert(FundNavHistory).values(
+                code=code,
+                date=str(row['净值日期'])[:10],
+                nav=round(float(row['单位净值']), 4),
+                pct_change=round(float(row['日增长率']), 2) if pd.notna(row['日增长率']) else None,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['code', 'date'],
+                set_={'nav': round(float(row['单位净值']), 4)},
+            )
+            session.execute(stmt)
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"基金历史净值缓存失败 {code}: {e}")
+        return False
+    finally:
+        session.close()
+
+
+def _latest_trading_date() -> str:
+    """估算最近一个交易日的日期（简单判断：跳过周末，不考虑节假日）"""
+    from datetime import timedelta
+    now = datetime.now()
+    # 收盘前（15:00 前）取前一交易日，收盘后取当天
+    if now.hour >= 15:
+        d = now.date()
+    else:
+        d = (now - timedelta(days=1)).date()
+    # 跳过周末
+    while d.weekday() >= 5:
+        d = d - timedelta(days=1)
+    return d.strftime('%Y-%m-%d')
+
+
+def ensure_nav_history(code: str) -> None:
+    """
+    检查缓存是否过期，过期则从 akshare 拉取全量数据写库。
+    判断标准：fund_nav_history 中该基金最大日期 < 最近交易日。
+    """
+    session = db.get_session()
+    try:
+        latest = (
+            session.query(FundNavHistory.date)
+            .filter(FundNavHistory.code == code)
+            .order_by(FundNavHistory.date.desc())
+            .first()
+        )
+        threshold = _latest_trading_date()
+        if latest is None or latest[0] < threshold:
+            _fetch_and_cache_nav_history(code)
+    finally:
+        session.close()
+
+
+def get_recent_nav(code: str, limit: int = 10) -> list[dict]:
+    """从缓存表获取最近 N 条历史净值（列表页专用）"""
+    session = db.get_session()
+    try:
+        rows = (
+            session.query(FundNavHistory)
+            .filter(FundNavHistory.code == code)
+            .order_by(FundNavHistory.date.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {'date': r.date, 'nav': r.nav, 'pct_change': r.pct_change}
+            for r in reversed(rows)
+        ]
+    finally:
+        session.close()
+
+
+def get_nav_history_from_db(code: str, period: str = '1年') -> list[dict]:
+    """从缓存表获取历史净值，按 period 裁剪（详情页专用）"""
+    from datetime import timedelta
+
+    period_days_map = {
+        '1月': 30, '3月': 90, '6月': 180,
+        '1年': 365, '3年': 365 * 3, '5年': 365 * 5,
+    }
+
+    session = db.get_session()
+    try:
+        rows = (
+            session.query(FundNavHistory)
+            .filter(FundNavHistory.code == code)
+            .order_by(FundNavHistory.date.asc())
+            .all()
+        )
+        if not rows:
+            return []
+
+        all_data = [
+            {'date': r.date, 'nav': r.nav, 'pct_change': r.pct_change}
+            for r in rows
+        ]
+
+        # 按 period 裁剪
+        if period == '成立来':
+            return all_data
+        if period == '今年来':
+            year_start = f"{datetime.now().year}-01-01"
+            return [d for d in all_data if d['date'] >= year_start]
+
+        days = period_days_map.get(period)
+        if days is None:
+            return all_data
+        cutoff = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        return [d for d in all_data if d['date'] >= cutoff]
+    finally:
+        session.close()
+
+
 if __name__ == '__main__':
     # 测试
-    result = fetch_fund_estimation('018957')
-    print(f"结果: {result}")
+    result = fetch_fund_nav_history('018957', '1年')
+    print(f"结果数量: {len(result)}")
+    if result:
+        print(f"第一条: {result[0]}")
+        print(f"最后一条: {result[-1]}")

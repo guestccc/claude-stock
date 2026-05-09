@@ -7,6 +7,7 @@ import ScreenerPage from './pages/ScreenerPage'
 import BacktestPage from './pages/BacktestPage'
 import PortfolioPage from './pages/PortfolioPage'
 import FundPage from './pages/FundPage'
+import FundDetailPage from './pages/FundDetailPage'
 import SettingsPage from './pages/SettingsPage'
 
 const antdTheme = {
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/backtest/:code" element={<BacktestPage />} />
             <Route path="/portfolio" element={<PortfolioPage />} />
             <Route path="/fund" element={<FundPage />} />
+            <Route path="/fund/:code" element={<FundDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>

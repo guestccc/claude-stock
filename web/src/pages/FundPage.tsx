@@ -1,5 +1,6 @@
 /** 自选基金页 */
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   getFundWatchlist,
   addFundWatchlist,
@@ -197,6 +198,7 @@ const S = {
 }
 
 export default function FundPage() {
+  const navigate = useNavigate()
   const [funds, setFunds] = useState<FundItem[]>([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -305,7 +307,9 @@ export default function FundPage() {
         </div>
       ) : (
         funds.map(fund => (
-          <div key={fund.code} style={S.card}>
+          <div key={fund.code} style={{ ...S.card, cursor: 'pointer' }}
+            onClick={() => navigate(`/fund/${fund.code}`)}
+          >
             <div style={S.cardLeft}>
               <div style={S.fundName}>{fund.name}</div>
               <div style={S.fundCode}>{fund.code}</div>
@@ -332,16 +336,16 @@ export default function FundPage() {
                     <tr>
                       <th style={S.th}>日期</th>
                       <th style={{ ...S.th, ...S.tdRight }}>单位净值</th>
-                      <th style={{ ...S.th, ...S.tdRight }}>估算涨跌</th>
+                      <th style={{ ...S.th, ...S.tdRight }}>日增长率</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {fund.history.slice(-5).map((h, i) => (
+                    {fund.history.slice(-10).map((h, i) => (
                       <tr key={i}>
                         <td style={S.td}>{h.date}</td>
                         <td style={{ ...S.td, ...S.tdRight }}>{h.nav?.toFixed(4) || '-'}</td>
-                        <td style={{ ...S.td, ...S.tdRight, color: changeColor(h.est_pct) }}>
-                          {changeSign(h.est_pct)}
+                        <td style={{ ...S.td, ...S.tdRight, color: changeColor(h.pct_change) }}>
+                          {h.pct_change != null ? (h.pct_change >= 0 ? '+' : '') + h.pct_change.toFixed(2) + '%' : '-'}
                         </td>
                       </tr>
                     ))}
@@ -371,7 +375,7 @@ export default function FundPage() {
 
               <button
                 style={S.btnDanger}
-                onClick={() => handleRemove(fund.code, fund.name)}
+                onClick={e => { e.stopPropagation(); handleRemove(fund.code, fund.name) }}
               >
                 移除
               </button>

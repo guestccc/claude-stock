@@ -1,16 +1,19 @@
 """基金服务"""
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from a_stock_db import db, FundBasic, FundWatchlist, FundEstimation
 from a_stock_fetcher.fetchers.fund import (
     fetch_fund_basic,
     fetch_fund_estimation,
+    ensure_nav_history,
+    get_recent_nav,
+    get_nav_history_from_db,
     remove_watchlist as fetcher_remove_watchlist,
 )
 
 
 def get_watchlist() -> List[dict]:
-    """获取自选基金列表 — 每次调用实时拉取天天基金估值"""
+    """获取自选基金列表 — 实时拉估值 + 按需刷新历史净值缓存"""
     session = db.get_session()
     try:
         watchlist = session.query(FundWatchlist).all()
@@ -22,6 +25,10 @@ def get_watchlist() -> List[dict]:
         # 实时拉取天天基金估值（每只0.3s）
         for code in codes:
             fetch_fund_estimation(code)
+
+        # 按需刷新历史净值缓存（缓存过期才调 akshare）
+        for code in codes:
+            ensure_nav_history(code)
 
         # 查基本信息
         basics = {
@@ -41,21 +48,12 @@ def get_watchlist() -> List[dict]:
             if est:
                 latest[code] = est
 
-        # 查历史净值
+        # 查近10日历史净值（从缓存表，纯 DB 查询）
         history = {}
         for code in codes:
-            rows = (
-                session.query(FundEstimation)
-                .filter(FundEstimation.code == code)
-                .order_by(FundEstimation.date.desc())
-                .limit(10)
-                .all()
-            )
-            if rows:
-                history[code] = [
-                    {'date': r.date, 'nav': r.nav, 'est_pct': r.est_pct}
-                    for r in reversed(rows)
-                ]
+            hist = get_recent_nav(code, 10)
+            if hist:
+                history[code] = hist
 
         results = []
         for w in watchlist:
@@ -118,3 +116,62 @@ def add_watchlist(code: str, remark: str = '') -> dict:
 def remove_watchlist(code: str) -> dict:
     """移除自选基金"""
     return {'success': fetcher_remove_watchlist(code)}
+
+
+def get_fund_detail(code: str) -> Optional[dict]:
+    """获取基金详情（基本信息 + 最新估值），优先读本地数据库，不存在则触发一次拉取"""
+    session = db.get_session()
+    try:
+        basic = session.query(FundBasic).filter(FundBasic.code == code).first()
+
+        # 本地无基本信息，触发一次拉取
+        if not basic:
+            fetch_fund_basic(code)
+            basic = session.query(FundBasic).filter(FundBasic.code == code).first()
+
+        if not basic:
+            return None
+
+        # 查最新估值
+        est = (
+            session.query(FundEstimation)
+            .filter(FundEstimation.code == code)
+            .order_by(FundEstimation.date.desc())
+            .first()
+        )
+
+        # 本地无估值，触发一次拉取
+        if not est:
+            fetch_fund_estimation(code)
+            est = (
+                session.query(FundEstimation)
+                .filter(FundEstimation.code == code)
+                .order_by(FundEstimation.date.desc())
+                .first()
+            )
+
+        return {
+            'code': code,
+            'name': basic.name or '',
+            'full_name': basic.full_name or '',
+            'fund_type': basic.fund_type or '',
+            'company': basic.company or '',
+            'manager': basic.manager or '',
+            'setup_date': basic.setup_date or '',
+            'scale': basic.scale or '',
+            'benchmark': basic.benchmark or '',
+            'strategy': basic.strategy or '',
+            'nav': est.nav if est else None,
+            'nav_date': est.date if est else '',
+            'est_nav': est.est_nav if est else None,
+            'est_pct': est.est_pct if est else None,
+            'update_time': est.update_time if est else '',
+        }
+    finally:
+        session.close()
+
+
+def get_fund_nav_history(code: str, period: str = '1年') -> List[dict]:
+    """获取基金历史净值 — 先确保缓存新鲜，再从 DB 查询"""
+    ensure_nav_history(code)
+    return get_nav_history_from_db(code, period)
