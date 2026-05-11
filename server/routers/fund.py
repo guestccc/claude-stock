@@ -23,6 +23,7 @@ class FundItem(BaseModel):
     company: Optional[str] = ''
     manager: Optional[str] = ''
     remark: Optional[str] = ''
+    tags: List[str] = []
     added_at: Optional[str] = ''
     nav: Optional[float] = None
     nav_date: Optional[str] = ''
@@ -75,10 +76,16 @@ class FundNavHistoryResponse(BaseModel):
 
 
 @router.get("/watchlist", response_model=FundWatchlistResponse)
-async def get_watchlist():
-    """获取自选基金列表（含实时估值）"""
-    data = fund_service.get_watchlist()
+async def get_watchlist(cache_minutes: int = Query(2, description="估值缓存分钟数")):
+    """获取自选基金列表（含估值，优先使用缓存）"""
+    data = fund_service.get_watchlist(cache_minutes)
     return {"data": data}
+
+
+@router.post("/watchlist/refresh")
+async def refresh_estimations():
+    """强制刷新所有自选基金估值"""
+    return fund_service.refresh_estimations()
 
 
 @router.post("/watchlist/{code}")
@@ -93,6 +100,12 @@ async def remove_watchlist(code: str):
     """移除自选基金"""
     result = fund_service.remove_watchlist(code)
     return result
+
+
+@router.put("/watchlist/{code}/tags")
+async def update_tags(code: str, tags: str = Query(..., description="标签，逗号分隔")):
+    """更新基金标签"""
+    return fund_service.update_tags(code, tags)
 
 
 @router.get("/search", response_model=List[FundSearchItem])

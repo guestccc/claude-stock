@@ -160,3 +160,16 @@ class BacktestRecentStock(Base):
 def init_tables():
     """初始化所有表（启动时调用一次）"""
     Base.metadata.create_all(bind=db.engine)
+    # 兼容已有数据库：补充新增列
+    _safe_add_column('fund_watchlist', 'tags', 'TEXT DEFAULT ""')
+
+
+def _safe_add_column(table: str, column: str, col_type: str):
+    """安全添加列，已存在则跳过"""
+    from sqlalchemy import text
+    with db.engine.connect() as conn:
+        try:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+            conn.commit()
+        except Exception:
+            pass

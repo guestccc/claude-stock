@@ -167,14 +167,20 @@ STRATEGIES = [
         description='以首次买入净值为基准，每跌一格买入，每涨一格卖出',
         params_desc='grid_pct: 每格涨跌幅%(默认3) | amount_per_grid: 每格金额(默认500)',
     ),
+    FundStrategyInfo(
+        id='cost_dca', name='成本定投',
+        description='根据净值与持仓成本的偏离度动态调整投入金额，低于成本多投，高于成本少投',
+        params_desc='base_amount: 基准金额(默认500) | frequency: daily/weekly | weekday: 1~5 | max_multiplier: 2~5',
+    ),
 ]
 
 
 # ---------- 通用交易执行 ----------
 class _Account:
     """模拟账户"""
-    def __init__(self, cash: float):
+    def __init__(self, cash: float, unlimited: bool = False):
         self.cash = cash
+        self.unlimited = unlimited  # 无限子弹模式，忽略现金不足
         self.shares = 0.0       # 持有份额
         self.cost_basis = 0.0   # 累计投入成本
         self.trades: list[dict] = []
@@ -183,7 +189,9 @@ class _Account:
 
     def buy(self, date: str, nav: float, amount: float, reason: str):
         """买入，amount 为投入金额（含手续费）"""
-        if amount <= 0 or self.cash < amount:
+        if amount <= 0:
+            return
+        if not self.unlimited and self.cash < amount:
             return
         fee = round(amount * BUY_FEE_RATE, 2)
         actual = amount - fee
@@ -236,7 +244,8 @@ class _Account:
     def record_equity(self, date: str, nav: float):
         """记录每日净值曲线"""
         pos_val = round(self.shares * nav, 2)
-        total = round(self.cash + pos_val, 2)
+        # 无限子弹模式：total = 持仓市值（现金无意义）
+        total = pos_val if self.unlimited else round(self.cash + pos_val, 2)
         self.equity_curve.append({
             'date': date, 'nav': nav,
             'total': total, 'cash': self.cash,
@@ -512,6 +521,78 @@ def _strategy_grid(nav_data: list[dict], params: StrategyParams, initial_capital
     return acc.trades, acc.equity_curve
 
 
+def _strategy_cost_dca(nav_data: list[dict], params: StrategyParams, initial_capital: float, _code: str = '') -> Tuple[list, list]:
+    """成本定投：根据净值与持仓成本的偏离度动态调整每期投入金额"""
+
+    # 投资倍数表：(下限, 上限): {最高倍数: 实际倍数}
+    MULTIPLIER_TABLE = [
+        # (lower, upper, {max_mult: multiplier})
+        # 正偏离：所有 max_mult 值相同
+        (15, None,   {2: 0.5, 3: 0.5, 4: 0.5, 5: 0.5}),
+        (10, 15,     {2: 0.6, 3: 0.6, 4: 0.6, 5: 0.6}),
+        (7.5, 10,    {2: 0.7, 3: 0.7, 4: 0.7, 5: 0.7}),
+        (5, 7.5,     {2: 0.8, 3: 0.8, 4: 0.8, 5: 0.8}),
+        (2.5, 5,     {2: 0.9, 3: 0.9, 4: 0.9, 5: 0.9}),
+        # 中性区间
+        (-2.5, 2.5,  {2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0}),
+        # 负偏离：不同 max_mult 倍数不同
+        (-5, -2.5,   {2: 1.2, 3: 1.4, 4: 1.6, 5: 1.8}),
+        (-7.5, -5,   {2: 1.4, 3: 1.8, 4: 2.2, 5: 2.6}),
+        (-10, -7.5,  {2: 1.6, 3: 2.2, 4: 2.8, 5: 3.4}),
+        (-15, -10,   {2: 1.8, 3: 2.6, 4: 3.4, 5: 4.2}),
+        (None, -15,  {2: 2.0, 3: 3.0, 4: 4.0, 5: 5.0}),
+    ]
+
+    def get_multiplier(deviation_pct: float, max_mult: int) -> float:
+        """根据偏离度和最高倍数查表获取投资倍数"""
+        for lower, upper, mult_map in MULTIPLIER_TABLE:
+            if lower is not None and deviation_pct < lower:
+                continue
+            if upper is not None and deviation_pct >= upper:
+                continue
+            return mult_map.get(max_mult, 1.0)
+        return 1.0
+
+    acc = _Account(0, unlimited=True)  # 无限子弹模式
+    base_amount = params.base_amount
+    frequency = params.frequency
+    weekday = params.weekday
+    max_mult = max(2, min(5, params.max_multiplier))
+    first_buy = True
+
+    for i, d in enumerate(nav_data):
+        # 判断是否为扣款日
+        should_invest = False
+        if frequency == 'daily':
+            should_invest = True
+        elif frequency == 'weekly':
+            # 计算星期几（周一=0 → 映射为 1~5）
+            dt = datetime.strptime(d['date'], '%Y-%m-%d')
+            wd = dt.weekday() + 1  # 1=周一 ~ 5=周五
+            should_invest = (wd == weekday)
+
+        if should_invest:
+            if first_buy:
+                # 首次投入：固定 1 倍
+                acc.buy(d['date'], d['nav'], base_amount, '成本定投首次投入（1.0倍）')
+                first_buy = False
+            elif acc.shares > 0 and acc.cost_basis > 0:
+                # 后续投入：根据偏离度动态调整
+                cost_per_unit = acc.cost_basis / acc.shares
+                deviation = (d['nav'] - cost_per_unit) / cost_per_unit * 100
+                multiplier = get_multiplier(deviation, max_mult)
+                invest_amount = round(base_amount * multiplier, 2)
+                if invest_amount > 0:
+                    acc.buy(d['date'], d['nav'], invest_amount,
+                            f'成本定投（偏离{deviation:+.1f}%, {multiplier}倍）')
+
+        acc.record_equity(d['date'], d['nav'])
+
+    # 无限子弹模式不清仓，统计时用持仓市值作为最终资产
+
+    return acc.trades, acc.equity_curve
+
+
 # ---------- 策略分发 ----------
 STRATEGY_MAP = {
     'dca': _strategy_dca,
@@ -520,6 +601,7 @@ STRATEGY_MAP = {
     'reverse_pyramid': _strategy_reverse_pyramid,
     'constant_value': _strategy_constant_value,
     'grid': _strategy_grid,
+    'cost_dca': _strategy_cost_dca,
 }
 
 
@@ -614,7 +696,11 @@ def run_fund_backtest(req: FundBacktestRequest) -> FundBacktestResponse:
         raise ValueError(f'未知策略: {req.strategy}')
 
     trades, equity_curve = strategy_fn(nav_data, req.params, req.initial_capital, req.code)
-    stats = _calc_stats(trades, equity_curve, req.initial_capital)
+    # 成本定投无限子弹模式：用累计投入成本作为统计基准
+    stats_capital = req.initial_capital
+    if req.strategy == 'cost_dca' and equity_curve:
+        stats_capital = equity_curve[-1]['cost_basis']
+    stats = _calc_stats(trades, equity_curve, stats_capital)
 
     return FundBacktestResponse(
         code=req.code,

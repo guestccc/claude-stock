@@ -64,6 +64,7 @@ const S = {
     fontSize: 12,
     fontFamily: fonts.mono,
     outline: 'none',
+    colorScheme: 'dark' as const,
   },
   runBtn: (loading: boolean) => ({
     padding: '8px 20px',
@@ -162,6 +163,21 @@ interface Props {
   code: string
 }
 
+// 成本定投倍数表数据
+const MULTIPLIER_TABLE_DATA: [string, ...number[]][] = [
+  ['≥15%',       0.5, 0.5, 0.5, 0.5],
+  ['10%~15%',    0.6, 0.6, 0.6, 0.6],
+  ['7.5%~10%',   0.7, 0.7, 0.7, 0.7],
+  ['5%~7.5%',    0.8, 0.8, 0.8, 0.8],
+  ['2.5%~5%',    0.9, 0.9, 0.9, 0.9],
+  ['-2.5%~2.5%', 1.0, 1.0, 1.0, 1.0],
+  ['-5%~-2.5%',  1.2, 1.4, 1.6, 1.8],
+  ['-7.5%~-5%',  1.4, 1.8, 2.2, 2.6],
+  ['-10%~-7.5%', 1.6, 2.2, 2.8, 3.4],
+  ['-15%~-10%',  1.8, 2.6, 3.4, 4.2],
+  ['<-15%',      2.0, 3.0, 4.0, 5.0],
+]
+
 // 策略规则说明
 const STRATEGY_RULES: Record<string, { buy: string[]; sell: string[]; note?: string }> = {
   dca: {
@@ -199,6 +215,17 @@ const STRATEGY_RULES: Record<string, { buy: string[]; sell: string[]; note?: str
     sell: ['净值相对上次买入上涨 N% 时，卖出对应份额'],
     note: '在震荡市中反复收割利润，适合波动较大的基金',
   },
+  cost_dca: {
+    buy: [
+      '计算持仓成本单价 = 累计投入 / 累计份额',
+      '计算相对涨跌幅 = (最新净值 - 成本单价) / 成本单价 × 100%',
+      '根据偏离度和最高倍数查表确定投资倍数',
+      '实际扣款 = 基准金额 × 投资倍数',
+      '偏离越大（低于成本）→ 投入越多',
+    ],
+    sell: ['回测期间不卖出，持有到期末'],
+    note: '首次投入固定为基准金额（1倍），后续根据偏离度动态调整',
+  },
 }
 
 // 每种策略需要的参数字段
@@ -209,6 +236,7 @@ const STRATEGY_PARAMS: Record<string, (keyof StrategyParams)[]> = {
   reverse_pyramid: ['take_profit_pct', 'level_interval_pct', 'min_levels'],
   constant_value: ['target_value', 'rebalance_days'],
   grid: ['grid_pct', 'amount_per_grid'],
+  cost_dca: ['base_amount', 'frequency', 'weekday', 'max_multiplier'],
 }
 
 const PARAM_LABELS: Record<string, string> = {
@@ -222,6 +250,10 @@ const PARAM_LABELS: Record<string, string> = {
   rebalance_days: '调仓间隔(天)',
   grid_pct: '每格涨跌(%)',
   amount_per_grid: '每格金额',
+  base_amount: '基准金额',
+  frequency: '扣款频率',
+  weekday: '每周几扣款',
+  max_multiplier: '最高倍数',
 }
 
 const PARAM_DEFAULTS: StrategyParams = {
@@ -235,6 +267,10 @@ const PARAM_DEFAULTS: StrategyParams = {
   rebalance_days: 30,
   grid_pct: 3,
   amount_per_grid: 500,
+  base_amount: 500,
+  frequency: 'weekly',
+  weekday: 1,
+  max_multiplier: 3,
 }
 
 export default function FundBacktestPanel({ code }: Props) {
@@ -262,7 +298,14 @@ export default function FundBacktestPanel({ code }: Props) {
       const reqParams: StrategyParams = {}
       for (const key of activeParams) {
         const v = params[key] ?? PARAM_DEFAULTS[key]
-        if (v !== undefined) reqParams[key] = v as any
+        if (v !== undefined) {
+          // frequency 是字符串，直接赋值；其余转 number
+          if (key === 'frequency') {
+            reqParams[key] = v as any
+          } else {
+            reqParams[key] = typeof v === 'number' ? v : +v as any
+          }
+        }
       }
       const res = await runFundBacktest({
         code,
@@ -313,6 +356,35 @@ export default function FundBacktestPanel({ code }: Props) {
               💡 {STRATEGY_RULES[strategy].note}
             </div>
           )}
+          {/* 成本定投专属：倍数表 */}
+          {strategy === 'cost_dca' && (
+            <div style={{ marginTop: 10, fontSize: 10, lineHeight: 1.6 }}>
+              <div style={{ color: colors.textSecondary, fontWeight: 600, marginBottom: 4 }}>投资倍数对照表</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fonts.mono }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...S.th, fontSize: 9 }}>相对涨跌幅</th>
+                    <th style={{ ...S.th, fontSize: 9, textAlign: 'center' }}>2倍</th>
+                    <th style={{ ...S.th, fontSize: 9, textAlign: 'center' }}>3倍</th>
+                    <th style={{ ...S.th, fontSize: 9, textAlign: 'center' }}>4倍</th>
+                    <th style={{ ...S.th, fontSize: 9, textAlign: 'center' }}>5倍</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {MULTIPLIER_TABLE_DATA.map(([range, ...vals]) => (
+                    <tr key={range}>
+                      <td style={{ ...S.td, fontSize: 9, color: colors.textMuted }}>{range}</td>
+                      {vals.map((v, i) => (
+                        <td key={i} style={{ ...S.td, fontSize: 9, textAlign: 'center', color: typeof v === 'number' && v >= 1 ? colors.rise : typeof v === 'number' && v < 1 ? colors.fall : colors.textSecondary }}>
+                          {v}x
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -327,19 +399,52 @@ export default function FundBacktestPanel({ code }: Props) {
           <label style={S.label}>结束日期</label>
           <input style={S.input} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} placeholder="留空=至今" />
         </div>
-        <div style={S.fieldGroup}>
-          <label style={S.label}>初始资金</label>
-          <input style={S.input} type="number" value={initialCapital} onChange={e => setInitialCapital(+e.target.value)} />
-        </div>
+        {strategy !== 'cost_dca' && (
+          <div style={S.fieldGroup}>
+            <label style={S.label}>初始资金</label>
+            <input style={S.input} type="number" value={initialCapital} onChange={e => setInitialCapital(+e.target.value)} />
+          </div>
+        )}
         {activeParams.map(key => (
           <div key={key} style={S.fieldGroup}>
             <label style={S.label}>{PARAM_LABELS[key] || key}</label>
-            <input style={S.input}
-              type="number"
-              step={key === 'drop_pct' ? 0.5 : 1}
-              value={params[key] ?? PARAM_DEFAULTS[key] ?? ''}
-              onChange={e => setParams({ ...params, [key]: +e.target.value })}
-            />
+            {key === 'frequency' ? (
+              <select style={S.input}
+                value={params.frequency ?? 'weekly'}
+                onChange={e => setParams({ ...params, frequency: e.target.value as 'daily' | 'weekly' })}
+              >
+                <option value="daily">每日</option>
+                <option value="weekly">每周</option>
+              </select>
+            ) : key === 'weekday' ? (
+              <select style={S.input}
+                value={params.weekday ?? 1}
+                onChange={e => setParams({ ...params, weekday: +e.target.value })}
+              >
+                <option value={1}>周一</option>
+                <option value={2}>周二</option>
+                <option value={3}>周三</option>
+                <option value={4}>周四</option>
+                <option value={5}>周五</option>
+              </select>
+            ) : key === 'max_multiplier' ? (
+              <select style={S.input}
+                value={params.max_multiplier ?? 3}
+                onChange={e => setParams({ ...params, max_multiplier: +e.target.value })}
+              >
+                <option value={2}>2倍</option>
+                <option value={3}>3倍</option>
+                <option value={4}>4倍</option>
+                <option value={5}>5倍</option>
+              </select>
+            ) : (
+              <input style={S.input}
+                type="number"
+                step={key === 'drop_pct' ? 0.5 : 1}
+                value={params[key] ?? PARAM_DEFAULTS[key] ?? ''}
+                onChange={e => setParams({ ...params, [key]: +e.target.value })}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -430,6 +535,8 @@ function buildChartOption(result: FundBacktestResponse) {
   const dates = ec.map(e => e.date)
   const totals = ec.map(e => e.total)
   const navs = ec.map(e => e.nav)
+  // 成本单价线 = 累计投入 / 累计份额
+  const costPerUnit = ec.map(e => e.shares > 0 ? e.cost_basis / e.shares : null)
 
   // 计算 5 日 / 10 日均线
   const ma = (data: number[], n: number) =>
@@ -479,7 +586,7 @@ function buildChartOption(result: FundBacktestResponse) {
         html += `<div style="color:${colors.textMuted};font-size:10px;margin-bottom:4px">${date}</div>`
         html += `<div>组合资产: <b>${ep.total.toFixed(0)}</b></div>`
         html += `<div style="color:${colors.textMuted}">现金 ${ep.cash.toFixed(0)} | 持仓 ${ep.position_value.toFixed(0)} | 份额 ${ep.shares.toFixed(2)}</div>`
-        html += `<div style="color:${colors.textMuted};font-size:10px">净值 ${ep.nav.toFixed(4)}</div>`
+        html += `<div style="color:${colors.textMuted};font-size:10px">净值 ${ep.nav.toFixed(4)}${ep.shares > 0 ? ` | 成本 ${(ep.cost_basis / ep.shares).toFixed(4)}` : ''}</div>`
 
         // 当日有交易时追加交易信息
         const dayTrades = tradesByDate.get(date)
@@ -498,7 +605,7 @@ function buildChartOption(result: FundBacktestResponse) {
         return html
       },
     },
-    legend: { data: ['组合资产', '基金净值', 'MA5', 'MA10'], textStyle: { color: colors.textMuted, fontFamily: fonts.mono, fontSize: 10 }, top: 4 },
+    legend: { data: ['组合资产', '基金净值', '成本单价', 'MA5', 'MA10'], textStyle: { color: colors.textMuted, fontFamily: fonts.mono, fontSize: 10 }, top: 4 },
     grid: { left: 60, right: 60, top: 36, bottom: 30 },
     xAxis: { type: 'category' as const, data: dates, axisLine: { lineStyle: { color: colors.border } }, axisTick: { show: false }, axisLabel: { color: colors.textMuted, fontSize: 9, fontFamily: fonts.mono, formatter: (v: string) => v.slice(5) } },
     yAxis: [
@@ -537,6 +644,10 @@ function buildChartOption(result: FundBacktestResponse) {
       {
         name: '基金净值', type: 'line', data: navs, yAxisIndex: 1, smooth: true, showSymbol: false,
         lineStyle: { width: 1, color: '#7aa4f5', type: 'dashed' as const },
+      },
+      {
+        name: '成本单价', type: 'line', data: costPerUnit, yAxisIndex: 1, smooth: true, showSymbol: false,
+        lineStyle: { width: 1.5, color: '#ff6b6b', type: 'dashed' as const },
       },
       {
         name: 'MA5', type: 'line', data: ma5, yAxisIndex: 1, smooth: true, showSymbol: false,

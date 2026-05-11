@@ -22,6 +22,11 @@ class StrategyParams(BaseModel):
     amount_per_grid: float = 500
     # 止盈（补仓类策略通用）
     take_profit_pct: float = 20.0
+    # 成本定投
+    base_amount: float = 500          # 基准单次投资金额
+    frequency: str = 'weekly'         # 扣款频率: daily / weekly
+    weekday: int = 1                  # 每周几扣款 (1=周一~5=周五)
+    max_multiplier: int = 3           # 最高投资倍数（2/3/4/5）
 
 
 class FundBacktestRequest(BaseModel):

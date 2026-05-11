@@ -250,6 +250,7 @@ class FundWatchlist(Base):
     code = Column(String(10), nullable=False, unique=True, comment='基金代码')
     added_at = Column(DateTime, default=datetime.now, comment='添加时间')
     remark = Column(String(200), comment='备注')
+    tags = Column(Text, default='', comment='标签，逗号分隔')
 
 
 class FundEstimation(Base):
@@ -350,9 +351,20 @@ class DatabaseManager:
         self.Session = sessionmaker(bind=self.engine)
 
     def create_all(self):
-        """创建所有表"""
+        """创建所有表，并自动迁移新增列"""
         Base.metadata.create_all(self.engine)
+        # 兼容已有数据库：自动补充新增列
+        self._migrate_add_column('fund_watchlist', 'tags', 'TEXT DEFAULT ""')
         print(f"数据库表创建成功: {self.db_path}")
+
+    def _migrate_add_column(self, table: str, column: str, col_type: str):
+        """安全地添加列（已存在则跳过）"""
+        with self.engine.connect() as conn:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                conn.commit()
+            except Exception:
+                pass  # 列已存在
 
     def drop_all(self):
         """删除所有表"""

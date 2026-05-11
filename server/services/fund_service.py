@@ -1,6 +1,7 @@
 """基金服务"""
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from a_stock_db import db, FundBasic, FundWatchlist, FundEstimation
 from a_stock_fetcher.fetchers.fund import (
     fetch_fund_basic,
@@ -12,8 +13,8 @@ from a_stock_fetcher.fetchers.fund import (
 )
 
 
-def get_watchlist() -> List[dict]:
-    """获取自选基金列表 — 实时拉估值 + 按需刷新历史净值缓存"""
+def get_watchlist(cache_minutes: int = 2) -> List[dict]:
+    """获取自选基金列表 — 优先使用缓存估值，过期才拉取"""
     session = db.get_session()
     try:
         watchlist = session.query(FundWatchlist).all()
@@ -22,13 +23,35 @@ def get_watchlist() -> List[dict]:
 
         codes = [w.code for w in watchlist]
 
-        # 实时拉取天天基金估值（每只0.3s）
+        # 查已有估值，判断哪些需要刷新
+        cutoff = datetime.now() - timedelta(minutes=cache_minutes)
+        need_fetch = []
         for code in codes:
-            fetch_fund_estimation(code)
+            est = (
+                session.query(FundEstimation)
+                .filter(FundEstimation.code == code)
+                .order_by(FundEstimation.created_at.desc())
+                .first()
+            )
+            if not est or est.created_at < cutoff:
+                need_fetch.append(code)
 
-        # 按需刷新历史净值缓存（缓存过期才调 akshare）
+        # 只刷新过期的估值
+        if need_fetch:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                futures = [pool.submit(fetch_fund_estimation, code) for code in need_fetch]
+                for f in as_completed(futures):
+                    try:
+                        f.result()
+                    except Exception:
+                        pass
+
+        # 串行刷新历史净值缓存（akshare 内部用 mini_racer，不支持并发）
         for code in codes:
-            ensure_nav_history(code)
+            try:
+                ensure_nav_history(code)
+            except Exception:
+                pass
 
         # 查基本信息
         basics = {
@@ -76,6 +99,7 @@ def get_watchlist() -> List[dict]:
                 'company': basic.company if basic else '',
                 'manager': basic.manager if basic else '',
                 'remark': w.remark or '',
+                'tags': [t.strip() for t in (w.tags or '').split(',') if t.strip()],
                 'added_at': w.added_at.strftime('%Y-%m-%d') if w.added_at else '',
                 'nav': est.nav if est else None,
                 'nav_date': est.date if est else '',
@@ -89,6 +113,31 @@ def get_watchlist() -> List[dict]:
         return results
     finally:
         session.close()
+
+
+def refresh_estimations() -> dict:
+    """强制刷新所有自选基金估值（忽略缓存）"""
+    session = db.get_session()
+    try:
+        watchlist = session.query(FundWatchlist).all()
+        codes = [w.code for w in watchlist]
+    finally:
+        session.close()
+
+    success = 0
+    failed = 0
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(fetch_fund_estimation, code) for code in codes]
+        for f in as_completed(futures):
+            try:
+                result = f.result()
+                if result is True:
+                    success += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+    return {'success': success, 'failed': failed, 'total': len(codes)}
 
 
 def add_watchlist(code: str, remark: str = '') -> dict:
@@ -175,3 +224,69 @@ def get_fund_nav_history(code: str, period: str = '1年') -> List[dict]:
     """获取基金历史净值 — 先确保缓存新鲜，再从 DB 查询"""
     ensure_nav_history(code)
     return get_nav_history_from_db(code, period)
+
+
+def search_fund(keyword: str, limit: int = 20) -> List[dict]:
+    """搜索基金（在线搜索天天基金接口）"""
+    import requests
+    try:
+        resp = requests.get(
+            'https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx',
+            params={
+                'm': 1,
+                'key': keyword,
+            },
+            headers={
+                'User-Agent': 'Mozilla/5.0',
+                'Referer': 'https://fund.eastmoney.com/',
+            },
+            timeout=5,
+        )
+        data = resp.json()
+        datas = data.get('Datas', [])
+        results = []
+        for item in datas[:limit]:
+            fb = item.get('FundBaseInfo', {}) or {}
+            results.append({
+                'code': item.get('CODE', ''),
+                'name': item.get('NAME', ''),
+                'fund_type': fb.get('FTYPE', ''),
+                'company': fb.get('JJGS', ''),
+            })
+        return results
+    except Exception:
+        # 在线搜索失败时降级到本地搜索
+        session = db.get_session()
+        try:
+            like = f'%{keyword}%'
+            rows = (
+                session.query(FundBasic)
+                .filter((FundBasic.code.like(like)) | (FundBasic.name.like(like)))
+                .limit(limit)
+                .all()
+            )
+            return [
+                {
+                    'code': r.code,
+                    'name': r.name,
+                    'fund_type': r.fund_type or '',
+                    'company': r.company or '',
+                }
+                for r in rows
+            ]
+        finally:
+            session.close()
+
+
+def update_tags(code: str, tags: str) -> dict:
+    """更新基金标签"""
+    session = db.get_session()
+    try:
+        w = session.query(FundWatchlist).filter(FundWatchlist.code == code).first()
+        if not w:
+            raise ValueError(f'基金 {code} 不在自选列表中')
+        w.tags = tags
+        session.commit()
+        return {'code': code, 'tags': [t.strip() for t in tags.split(',') if t.strip()]}
+    finally:
+        session.close()

@@ -14,6 +14,7 @@ export interface FundItem {
   company: string
   manager: string
   remark: string
+  tags: string[]
   added_at: string
   nav: number | null
   nav_date: string
@@ -32,9 +33,17 @@ export interface FundSearchItem {
 }
 
 /** 获取自选基金列表 */
-export async function getFundWatchlist(): Promise<FundItem[]> {
-  const { data } = await client.get('/fund/watchlist')
+export async function getFundWatchlist(cacheMinutes?: number): Promise<FundItem[]> {
+  const params: any = {}
+  if (cacheMinutes != null) params.cache_minutes = cacheMinutes
+  const { data } = await client.get('/fund/watchlist', { params })
   return data.data
+}
+
+/** 强制刷新所有基金估值 */
+export async function refreshFundEstimations(): Promise<{ success: number; failed: number; total: number }> {
+  const { data } = await client.post('/fund/watchlist/refresh')
+  return data
 }
 
 /** 添加自选基金 */
@@ -45,6 +54,11 @@ export async function addFundWatchlist(code: string, remark?: string): Promise<a
 /** 移除自选基金 */
 export async function removeFundWatchlist(code: string): Promise<any> {
   return client.delete(`/fund/watchlist/${code}`)
+}
+
+/** 更新基金标签 */
+export async function updateFundTags(code: string, tags: string[]): Promise<any> {
+  return client.put(`/fund/watchlist/${code}/tags`, null, { params: { tags: tags.join(',') } })
 }
 
 /** 搜索基金 */
@@ -112,6 +126,11 @@ export interface StrategyParams {
   grid_pct?: number
   amount_per_grid?: number
   take_profit_pct?: number
+  // 成本定投
+  base_amount?: number
+  frequency?: 'daily' | 'weekly'
+  weekday?: number
+  max_multiplier?: number
 }
 
 export interface FundBacktestRequest {
