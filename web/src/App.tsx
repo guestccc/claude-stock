@@ -9,6 +9,7 @@ import PortfolioPage from './pages/PortfolioPage'
 import FundPage from './pages/FundPage'
 import FundDetailPage from './pages/FundDetailPage'
 import BoardPage from './pages/BoardPage'
+import BoardConceptDetailPage from './pages/BoardConceptDetailPage'
 import SettingsPage from './pages/SettingsPage'
 
 const antdTheme = {
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/fund" element={<FundPage />} />
             <Route path="/fund/:code" element={<FundDetailPage />} />
             <Route path="/board" element={<BoardPage />} />
+            <Route path="/board/concept/:name" element={<BoardConceptDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>

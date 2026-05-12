@@ -157,6 +157,37 @@ class BacktestRecentStock(Base):
     last_run_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='最近运行时间')
 
 
+class BoardWatchlist(Base):
+    """关注的板块"""
+    __tablename__ = 'board_watchlist'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(20), nullable=False, unique=True, comment='板块代码')
+    name = Column(String(50), nullable=False, comment='板块名称')
+    created_at = Column(DateTime, default=datetime.now, comment='添加时间')
+
+
+class BoardConceptDaily(Base):
+    """概念板块日 K 线（同花顺）"""
+    __tablename__ = 'board_concept_daily'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False, comment='板块名称')
+    date = Column(String(10), nullable=False, comment='日期 YYYY-MM-DD')
+    open = Column(Float, nullable=False, comment='开盘价')
+    close = Column(Float, nullable=False, comment='收盘价')
+    high = Column(Float, nullable=False, comment='最高价')
+    low = Column(Float, nullable=False, comment='最低价')
+    volume = Column(Float, nullable=False, comment='成交量')
+    turnover = Column(Float, nullable=False, comment='成交额')
+    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
+
+    __table_args__ = (
+        Index('idx_concept_name_date', 'name', 'date', unique=True),
+        Index('idx_concept_date', 'date'),
+    )
+
+
 def init_tables():
     """初始化所有表（启动时调用一次）"""
     Base.metadata.create_all(bind=db.engine)
