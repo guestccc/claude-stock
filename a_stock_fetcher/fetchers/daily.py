@@ -217,13 +217,21 @@ def fetch_stock_daily_incremental(code: str) -> str:
         return reason
 
 
-def fetch_all_stocks_daily_incremental(codes: list = None, limit: int = None, delay: float = REQUEST_DELAY) -> dict:
+def fetch_all_stocks_daily_incremental(
+    codes: list = None,
+    limit: int = None,
+    delay: float = REQUEST_DELAY,
+    start_date: str = None,
+    end_date: str = None,
+) -> dict:
     """
     批量增量获取股票日线数据
     支持数据源的批量优化（如妙想可一次查多只）
     :param codes: 指定股票代码列表
     :param limit: 限制数量
     :param delay: 请求间隔
+    :param start_date: 强制指定起始日期 "YYYY-MM-DD"（覆盖基于 latest_date 的默认逻辑）
+    :param end_date: 强制指定结束日期 "YYYY-MM-DD"（默认今天）
     :return: {'success': 成功数, 'failed': [...]}
     """
     provider = get_provider()
@@ -263,34 +271,43 @@ def fetch_all_stocks_daily_incremental(codes: list = None, limit: int = None, de
     session.close()
 
     today = datetime.now().date()
+    # 指定结束日期或默认今天
+    query_end = end_date if end_date else today.strftime('%Y-%m-%d')
 
-    # 按需更新分组（跳过已有最新数据的）
-    need_update = []
-    for code in stock_codes:
-        latest = latest_dates.get(code)
-        if latest and latest >= today:
-            continue
-        need_update.append(code)
+    # 强制指定起始日期时，所有股票都需要更新
+    force_start = start_date is not None
 
-    if not need_update:
-        print(f"所有股票数据已是最新，无需更新")
-        return {'success': len(stocks), 'failed': []}
+    if force_start:
+        need_update = stock_codes
+        query_start = start_date
+        print(f"强制日期范围: {query_start} ~ {query_end}")
+    else:
+        # 按需更新分组（跳过已有最新数据的）
+        need_update = []
+        for code in stock_codes:
+            latest = latest_dates.get(code)
+            if latest and latest >= today:
+                continue
+            need_update.append(code)
 
-    skipped_fresh = len(stock_codes) - len(need_update)
-    if skipped_fresh:
-        print(f"已是最新跳过: {skipped_fresh} 只，需更新: {len(need_update)} 只")
+        if not need_update:
+            print(f"所有股票数据已是最新，无需更新")
+            return {'success': len(stocks), 'failed': []}
 
-    # 确定统一日期范围（取所有需更新股票的最宽范围）
-    start_dates = []
-    for code in need_update:
-        latest = latest_dates.get(code)
-        if latest:
-            start_dates.append((latest + timedelta(days=1)))
-        else:
-            start_dates.append(today - timedelta(days=30))
+        skipped_fresh = len(stock_codes) - len(need_update)
+        if skipped_fresh:
+            print(f"已是最新跳过: {skipped_fresh} 只，需更新: {len(need_update)} 只")
 
-    query_start = min(start_dates).strftime('%Y-%m-%d')
-    query_end = today.strftime('%Y-%m-%d')
+        # 确定统一日期范围（取所有需更新股票的最宽范围）
+        code_start_dates = []
+        for code in need_update:
+            latest = latest_dates.get(code)
+            if latest:
+                code_start_dates.append((latest + timedelta(days=1)))
+            else:
+                code_start_dates.append(today - timedelta(days=30))
+
+        query_start = min(code_start_dates).strftime('%Y-%m-%d')
 
     # 批量获取数据
     print(f"  查询范围: {query_start} ~ {query_end}, 股票数: {len(need_update)}")
@@ -307,7 +324,7 @@ def fetch_all_stocks_daily_incremental(codes: list = None, limit: int = None, de
 
     # 写入数据库
     session = db.get_session()
-    success_count = skipped_fresh
+    success_count = skipped_fresh if not force_start else 0
     failed = []
     total_written = 0
 
@@ -318,10 +335,11 @@ def fetch_all_stocks_daily_incremental(codes: list = None, limit: int = None, de
                 failed.append({'code': code, 'name': stock_map.get(code, ''), 'reason': '无数据'})
                 continue
 
-            # 过滤新数据
-            latest = latest_dates.get(code)
-            if latest:
-                records = [r for r in records if pd.to_datetime(r['date']).date() > latest]
+            # 过滤新数据（强制模式跳过过滤，直接覆盖）
+            if not force_start:
+                latest = latest_dates.get(code)
+                if latest:
+                    records = [r for r in records if pd.to_datetime(r['date']).date() > latest]
 
             if not records:
                 success_count += 1

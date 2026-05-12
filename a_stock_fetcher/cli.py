@@ -31,6 +31,8 @@ HELP_TEXT = """
   daily [N]             - 全量获取日线数据，可指定N限制数量
   daily-update [N]       - 增量更新日线数据（全量或限制N只）
   daily-update --codes 600519,000001 - 增量更新指定股票
+  daily-update --days 10              - 强制更新近10个交易日（覆盖已有）
+  daily-update --start 2026-05-01 --end 2026-05-12 - 指定日期区间
   daily-full <CODE>       - 获取指定股票所有历史日线数据
   daily-full-all         - 获取所有股票所有历史日线数据
   minute [N]             - 更新1分钟分时数据，可指定N限制数量
@@ -50,6 +52,8 @@ HELP_TEXT = """
   python3 -m a_stock_fetcher.cli daily-update                    # 增量更新全部
   python3 -m a_stock_fetcher.cli daily-update 100                  # 增量更新前100只
   python3 -m a_stock_fetcher.cli daily-update --codes 600519,000001 # 增量更新指定股票
+  python3 -m a_stock_fetcher.cli daily-update --days 10             # 强制更新近10个交易日
+  python3 -m a_stock_fetcher.cli daily-update --start 2026-05-01 --end 2026-05-12  # 指定区间
   python3 -m a_stock_fetcher.cli daily-full 600519                # 获取贵州茅台所有历史数据
   python3 -m a_stock_fetcher.cli daily-full-all                   # 获取所有股票所有历史数据
   python3 -m a_stock_fetcher.cli fund-add 018957                  # 添加自选基金
@@ -73,6 +77,28 @@ def parse_codes_arg(args: list) -> list:
     return codes
 
 
+def parse_date_args(args: list) -> dict:
+    """
+    解析 --days / --start / --end 参数
+    :return: {'days': int|None, 'start': str|None, 'end': str|None}
+    """
+    result = {'days': None, 'start': None, 'end': None}
+    i = 0
+    while i < len(args):
+        if args[i] == '--days' and i + 1 < len(args):
+            result['days'] = int(args[i + 1])
+            i += 2
+        elif args[i] == '--start' and i + 1 < len(args):
+            result['start'] = args[i + 1]
+            i += 2
+        elif args[i] == '--end' and i + 1 < len(args):
+            result['end'] = args[i + 1]
+            i += 2
+        else:
+            i += 1
+    return result
+
+
 def main():
     if len(sys.argv) < 2:
         print(HELP_TEXT)
@@ -84,14 +110,17 @@ def main():
     # 解析参数
     limit = None
     codes = parse_codes_arg(args)
+    date_args = parse_date_args(args)
 
-    # 解析数字参数
-    for arg in args:
-        if arg != '--codes' and not codes:
-            try:
-                limit = int(arg)
-            except ValueError:
-                pass
+    # 解析数字参数（排除 -- 开头的参数值）
+    known_flags = {'--codes', '--days', '--start', '--end'}
+    for i, arg in enumerate(args):
+        if arg.startswith('--') or (i > 0 and args[i - 1] in known_flags):
+            continue
+        try:
+            limit = int(arg)
+        except ValueError:
+            pass
 
     if cmd == "init":
         print("=" * 50)
@@ -105,7 +134,20 @@ def main():
         fetch_all_stocks_daily(limit=limit)
 
     elif cmd == "daily-update":
-        fetch_all_stocks_daily_incremental(codes=codes if codes else None, limit=limit)
+        # 处理 --days：换算为 start_date
+        sd = date_args.get('start')
+        ed = date_args.get('end')
+        days = date_args.get('days')
+        if days and not sd:
+            from datetime import date, timedelta
+            # 日历天数按 days*1.5 估算交易日范围
+            sd = (date.today() - timedelta(days=int(days * 1.5))).strftime('%Y-%m-%d')
+        fetch_all_stocks_daily_incremental(
+            codes=codes if codes else None,
+            limit=limit,
+            start_date=sd,
+            end_date=ed,
+        )
 
     elif cmd == "daily-full":
         if not args or args[0].startswith('--'):
