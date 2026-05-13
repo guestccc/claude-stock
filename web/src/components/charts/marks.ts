@@ -151,6 +151,11 @@ const breakdownMark: MarkDef = {
 // ---------- 注册表 ----------
 export const marks: MarkDef[] = [breakoutMark, dcBreakoutMark, breakdownMark];
 
+// ---------- 按 id 查找 ----------
+export function findMarkById(id: string): MarkDef | undefined {
+  return marks.find((m) => m.id === id);
+}
+
 // ---------- 渲染：mark → ECharts markPoint ----------
 export function marksToMarkPoint(
   markDefs: MarkDef[],
