@@ -33,6 +33,9 @@ class AkShareProvider(DailyDataProvider):
         ak_start = start_date.replace('-', '')
         ak_end = end_date.replace('-', '')
 
+        # 确定性错误（退市/停牌/代码无效），不重试直接返回空
+        _FATAL_ERRORS = ('No value to decode', '相互', '不存在')
+
         df = None
         for attempt in range(self.MAX_RETRIES):
             try:
@@ -44,6 +47,11 @@ class AkShareProvider(DailyDataProvider):
                 )
                 break
             except Exception as e:
+                err_msg = str(e)
+                is_fatal = any(kw in err_msg for kw in _FATAL_ERRORS)
+                if is_fatal:
+                    print(f"  新浪跳过 ({code}): {err_msg}")
+                    return []
                 if attempt < self.MAX_RETRIES - 1:
                     wait = 2 ** (attempt + 1)
                     print(f"  新浪重试 ({code}) 第{attempt+1}次，等待{wait}s: {e}")
@@ -55,43 +63,33 @@ class AkShareProvider(DailyDataProvider):
         if df is None or df.empty:
             return []
 
+        # 新浪源缺少振幅/涨跌幅/涨跌额，用 DataFrame 统一计算
+        df = df.sort_values('date').reset_index(drop=True)
+        prev_close = df['close'].shift(1)
+        df['_change'] = (df['close'] - prev_close).round(4)
+        df['_pct_change'] = (df['_change'] / prev_close * 100).round(4)
+        df['_amplitude'] = ((df['high'] - df['low']) / prev_close * 100).round(4)
+
         records = []
-        prev_close = None
         for _, row in df.iterrows():
-            close = float(row['close']) if pd.notna(row['close']) else None
-            open_ = float(row['open']) if pd.notna(row['open']) else None
-            high = float(row['high']) if pd.notna(row['high']) else None
-            low = float(row['low']) if pd.notna(row['low']) else None
-
-            # 涨跌幅/涨跌额需自行计算（新浪不提供）
-            change = None
-            pct_change = None
-            if prev_close and prev_close > 0 and close is not None:
-                change = round(close - prev_close, 4)
-                pct_change = round(change / prev_close * 100, 4)
-
-            # 振幅 = (最高-最低) / 昨收 * 100
-            amplitude = None
-            if prev_close and prev_close > 0 and high is not None and low is not None:
-                amplitude = round((high - low) / prev_close * 100, 4)
-
             records.append({
                 'date': str(row['date']),
-                'open': open_,
-                'close': close,
-                'high': high,
-                'low': low,
+                'open': float(row['open']) if pd.notna(row['open']) else None,
+                'close': float(row['close']) if pd.notna(row['close']) else None,
+                'high': float(row['high']) if pd.notna(row['high']) else None,
+                'low': float(row['low']) if pd.notna(row['low']) else None,
                 'volume': float(row['volume']) if pd.notna(row.get('volume')) else None,
                 'amount': float(row['amount']) if pd.notna(row.get('amount')) else None,
-                'amplitude': amplitude,
-                'pct_change': pct_change,
-                'change': change,
+                'amplitude': float(row['_amplitude']) if pd.notna(row['_amplitude']) else None,
+                'pct_change': float(row['_pct_change']) if pd.notna(row['_pct_change']) else None,
+                'change': float(row['_change']) if pd.notna(row['_change']) else None,
                 'turnover': float(row['turnover']) if pd.notna(row.get('turnover')) else None,
             })
-            if close is not None:
-                prev_close = close
 
         return records
 
     def name(self) -> str:
         return "akshare"
+
+    def source_desc(self) -> str:
+        return "新浪财经前复权"

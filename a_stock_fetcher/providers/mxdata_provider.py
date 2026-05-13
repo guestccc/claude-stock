@@ -228,6 +228,9 @@ class MxDataProvider(DailyDataProvider):
             print(f"  妙想 API 错误 ({code}): {e}")
             return []
 
+    def supports_batch(self) -> bool:
+        return True
+
     def fetch_daily_batch(self, codes: List[str], start_date: str, end_date: str) -> Dict[str, List[dict]]:
         """
         批量获取多只股票日线数据
@@ -258,3 +261,6 @@ class MxDataProvider(DailyDataProvider):
 
     def name(self) -> str:
         return "mxdata"
+
+    def source_desc(self) -> str:
+        return "妙想模拟组合数据"

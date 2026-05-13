@@ -235,8 +235,11 @@ def fetch_all_stocks_daily_incremental(
     :return: {'success': 成功数, 'failed': [...]}
     """
     provider = get_provider()
+    mode_label = "批量获取" if provider.supports_batch() else "逐只获取"
     print("=" * 50)
-    print(f"批量增量获取日线行情数据 (数据源: {provider.name()})...")
+    print(f"批量增量获取日线行情数据")
+    print(f"  数据源: {provider.name()} ({provider.source_desc()})")
+    print(f"  获取方式: {mode_label}")
     print("=" * 50)
 
     session = db.get_session()
@@ -309,63 +312,108 @@ def fetch_all_stocks_daily_incremental(
 
         query_start = min(code_start_dates).strftime('%Y-%m-%d')
 
-    # 批量获取数据
+    # 获取数据 + 写入数据库
     print(f"  查询范围: {query_start} ~ {query_end}, 股票数: {len(need_update)}")
-    t_batch_start = time.time()
+    t_start = time.time()
 
-    try:
-        batch_data = provider.fetch_daily_batch(need_update, query_start, query_end)
-    except Exception as e:
-        print(f"  批量获取失败: {e}")
-        return {'success': 0, 'failed': [{'code': c, 'name': stock_map.get(c, ''), 'reason': str(e)} for c in need_update]}
-
-    t_batch = time.time() - t_batch_start
-    print(f"  批量 API 完成 ({t_batch:.2f}s), 获取 {len(batch_data)} 只股票数据")
-
-    # 写入数据库
-    session = db.get_session()
     success_count = skipped_fresh if not force_start else 0
     failed = []
     total_written = 0
 
-    try:
-        for code in need_update:
-            records = batch_data.get(code, [])
-            if not records:
-                failed.append({'code': code, 'name': stock_map.get(code, ''), 'reason': '无数据'})
-                continue
+    if provider.supports_batch():
+        # ---- 真正的批量获取（如妙想），一次 API 返回所有数据 ----
+        try:
+            batch_data = provider.fetch_daily_batch(need_update, query_start, query_end)
+        except Exception as e:
+            print(f"  批量获取失败: {e}")
+            return {'success': 0, 'failed': [{'code': c, 'name': stock_map.get(c, ''), 'reason': str(e)} for c in need_update]}
 
-            # 过滤新数据（强制模式跳过过滤，直接覆盖）
-            if not force_start:
-                latest = latest_dates.get(code)
-                if latest:
-                    records = [r for r in records if pd.to_datetime(r['date']).date() > latest]
+        t_batch = time.time() - t_start
+        print(f"  批量 API 完成 ({t_batch:.2f}s), 获取 {len(batch_data)} 只股票数据")
 
-            if not records:
+        session = db.get_session()
+        try:
+            for code in need_update:
+                records = batch_data.get(code, [])
+                if not records:
+                    failed.append({'code': code, 'name': stock_map.get(code, ''), 'reason': '无数据'})
+                    continue
+                if not force_start:
+                    latest = latest_dates.get(code)
+                    if latest:
+                        records = [r for r in records if pd.to_datetime(r['date']).date() > latest]
+                if not records:
+                    success_count += 1
+                    continue
+                count = 0
+                for record in records:
+                    try:
+                        daily = _build_daily_dict(code, record, provider.name())
+                        _upsert_daily(session, daily)
+                        count += 1
+                    except Exception:
+                        continue
+                total_written += count
                 success_count += 1
-                continue
-
-            count = 0
-            for record in records:
+                print(f"  {code} {stock_map.get(code, '')} 新增{count}条 ✓")
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            print(f"  数据库写入失败: {e}")
+        finally:
+            session.close()
+    else:
+        # ---- 逐只获取+写入（如 akshare），每只即拉即写即打印 ----
+        session = db.get_session()
+        try:
+            for i, code in enumerate(need_update):
+                name = stock_map.get(code, '')
                 try:
-                    daily = _build_daily_dict(code, record, provider.name())
-                    _upsert_daily(session, daily)
-                    count += 1
-                except Exception:
+                    records = provider.fetch_daily(code, query_start, query_end)
+                except Exception as e:
+                    failed.append({'code': code, 'name': name, 'reason': str(e)[:80]})
+                    print(f"  [{i+1}/{len(need_update)}] {code} {name} 失败: {e}")
                     continue
 
-            total_written += count
-            success_count += 1
-            print(f"  {code} {stock_map.get(code, '')} 新增{count}条 ✓")
+                if not records:
+                    failed.append({'code': code, 'name': name, 'reason': '无数据'})
+                    print(f"  [{i+1}/{len(need_update)}] {code} {name} 无数据")
+                    continue
 
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        print(f"  数据库写入失败: {e}")
-    finally:
-        session.close()
+                # 过滤新数据（强制模式跳过过滤）
+                if not force_start:
+                    latest = latest_dates.get(code)
+                    if latest:
+                        records = [r for r in records if pd.to_datetime(r['date']).date() > latest]
 
-    t_total = time.time() - t_batch_start
+                if not records:
+                    success_count += 1
+                    continue
+
+                count = 0
+                for record in records:
+                    try:
+                        daily = _build_daily_dict(code, record, provider.name())
+                        _upsert_daily(session, daily)
+                        count += 1
+                    except Exception:
+                        continue
+
+                # 每 100 只提交一次，避免事务过大
+                total_written += count
+                success_count += 1
+                if (i + 1) % 100 == 0:
+                    session.commit()
+                print(f"  [{i+1}/{len(need_update)}] {code} {name} 新增{count}条 ✓")
+                time.sleep(delay)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            print(f"  数据库写入失败: {e}")
+        finally:
+            session.close()
+
+    t_total = time.time() - t_start
     print(f"\n成功: {success_count}/{len(stocks)} (写入{total_written}条, 总耗时{t_total:.2f}s)")
     if failed:
         print(f"\n失败 {len(failed)} 只:")

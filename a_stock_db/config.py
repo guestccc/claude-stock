@@ -6,9 +6,10 @@ import os
 # 数据库
 DB_PATH = os.path.join(os.path.dirname(__file__), "a_stock.db")
 
-# 日线数据源: "baostock" | "mxdata" | "akshare"
+# 日线数据源: "akshare" | "akshare_eastmoney" | "mxdata" | "baostock"
 # 可通过环境变量 DAILY_DATA_SOURCE 覆盖
-# akshare: 无限制，数据来源于东方财富（推荐）
+# akshare: 新浪财经前复权，字段需手动补算振幅/涨跌幅（默认）
+# akshare_eastmoney: 东方财富前复权，字段全（振幅/涨跌幅/换手率直接返回）
 # mxdata: 妙想 API，150次/天（备选）
 # baostock: 已不稳定（备用）
 DAILY_DATA_SOURCE = os.getenv("DAILY_DATA_SOURCE", "akshare")

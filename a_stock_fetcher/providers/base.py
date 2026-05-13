@@ -43,6 +43,14 @@ class DailyDataProvider(ABC):
                 continue
         return result
 
+    def supports_batch(self) -> bool:
+        """是否支持真正的批量获取（子类覆写 fetch_daily_batch 时应返回 True）"""
+        return False
+
     @abstractmethod
     def name(self) -> str:
         """数据源名称（如 "baostock", "mxdata"）"""
+
+    def source_desc(self) -> str:
+        """数据源描述（如 "新浪财经前复权"），子类可覆写"""
+        return self.name()
