@@ -21,7 +21,7 @@ MX_APIKEY = os.getenv("MX_APIKEY", "")
 MINUTE_KEEP_DAYS = 5
 
 # 请求间隔（秒），避免触发风控
-REQUEST_DELAY = 0.3
+REQUEST_DELAY = 0.05
 
 # 分时获取股票数量限制，None表示全部
 MINUTE_STOCK_LIMIT = None
