@@ -286,24 +286,31 @@ export function detectStrokes(merged: MergedBar[], fractals: Fractal[]): Stroke[
 /**
  * 从笔序列中识别中枢
  *
- * 缠论中枢定义（简化版）：
- * - 至少 3 笔连续走势的价格重叠区域构成中枢
- * - ZG = min(各笔高点)：上沿
- * - ZD = max(各笔低点)：下沿
- * - 起点：第1笔的终点（即"进入笔"结束、中枢开始）
+ * 缠论中枢定义：
+ * - 中枢由 1 进入笔 + 3 构成笔（共4笔）描述
+ * - 第1笔为"过渡笔"（不参与，跳过）
+ * - 第2笔为"进入笔"（仅提供起点坐标，不参与 ZG/ZD 计算）
+ * - 第3、4、5笔为"构成笔"（即标准说的"第2、3、4笔"），用这3笔的价格重叠区域确定中枢
+ * - ZG = min(构成笔各笔高点)：上沿
+ * - ZD = max(构成笔各笔低点)：下沿
+ * - 起点：进入笔的终点（中枢开始的坐标位置）
  * - 终点：最后一笔在中枢内的终点
  * - 后续笔仍在中枢区间内 [ZD, ZG] 振荡时，中枢延伸；脱离则结束
  */
 export function detectPivots(_merged: MergedBar[], strokes: Stroke[]): Pivot[] {
-  if (strokes.length < 3) return []
+  // 需要 5 笔：1 过渡笔 + 1 进入笔 + 3 构成笔
+  if (strokes.length < 5) return []
 
   const pivots: Pivot[] = []
   let i = 0
 
-  while (i <= strokes.length - 3) {
-    const s1 = strokes[i], s2 = strokes[i + 1], s3 = strokes[i + 2]
+  while (i <= strokes.length - 5) {
+    const entry = strokes[i + 1]           // 进入笔：不参与 ZG/ZD 计算（strokes[i] 是过渡笔，跳过）
+    const s1 = strokes[i + 2]              // 构成笔1
+    const s2 = strokes[i + 3]              // 构成笔2
+    const s3 = strokes[i + 4]              // 构成笔3
 
-    // 三笔的高低
+    // 用3根构成笔计算重叠区间
     const highs = [s1, s2, s3].map(s => Math.max(s.from.value, s.to.value))
     const lows = [s1, s2, s3].map(s => Math.min(s.from.value, s.to.value))
 
@@ -312,14 +319,14 @@ export function detectPivots(_merged: MergedBar[], strokes: Stroke[]): Pivot[] {
 
     // 有效中枢：必须有重叠区间
     if (zg > zd) {
-      // 起点：第1笔的终点（"进入笔"结束的位置）
-      const startIdx = s1.to.barIndex
+      // 起点：进入笔的终点
+      const startIdx = entry.to.barIndex
       let endIdx = s3.to.barIndex
-      let lastUsedStrokeIdx = i + 2
+      let lastUsedStrokeIdx = i + 4
       const includedStrokes = [s1, s2, s3]
 
       // 向后延伸：后续笔仍在中枢区间内则延伸
-      for (let j = i + 3; j < strokes.length; j++) {
+      for (let j = i + 5; j < strokes.length; j++) {
         const nextStroke = strokes[j]
         const nextHigh = Math.max(nextStroke.from.value, nextStroke.to.value)
         const nextLow = Math.min(nextStroke.from.value, nextStroke.to.value)

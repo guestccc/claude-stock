@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy import desc, func
 
-from a_stock_db import StockBasic, StockDaily, StockMinute, StockRealtime
+from a_stock_db import StockBasic, StockDaily, StockMinute, StockRealtime, ETFBasic, ETFDaily
 from a_stock_db.database import db
 
 
@@ -30,11 +30,15 @@ def search_stocks(keyword: str, limit: int = 20) -> List[dict]:
 
 
 def get_stock_name(code: str) -> Optional[str]:
-    """获取股票名称"""
+    """获取股票/ETF名称：先查 StockBasic，fallback 查 ETFBasic"""
     session = db.get_session()
     try:
         row = session.query(StockBasic).filter(StockBasic.code == code).first()
-        return row.股票简称 if row else None
+        if row and row.股票简称:
+            return row.股票简称
+        # fallback: ETF
+        etf = session.query(ETFBasic).filter(ETFBasic.code == code).first()
+        return etf.name if etf else None
     finally:
         session.close()
 
@@ -45,15 +49,29 @@ def get_daily(
     end_date: Optional[str] = None,
     limit: int = 120,
 ) -> List[dict]:
-    """获取日 K 线数据（日期升序，用于图表渲染）"""
+    """获取日 K 线数据（日期升序，用于图表渲染）
+    先查 StockDaily，fallback 查 ETFDaily
+    """
     session = db.get_session()
     try:
+        # 先尝试股票日线
+        model = StockDaily
         query = session.query(StockDaily).filter(StockDaily.code == code)
         if start_date:
             query = query.filter(StockDaily.日期 >= start_date)
         if end_date:
             query = query.filter(StockDaily.日期 <= end_date)
         rows = query.order_by(desc(StockDaily.日期)).limit(limit).all()
+
+        # fallback: ETF
+        if not rows:
+            query = session.query(ETFDaily).filter(ETFDaily.code == code)
+            if start_date:
+                query = query.filter(ETFDaily.日期 >= start_date)
+            if end_date:
+                query = query.filter(ETFDaily.日期 <= end_date)
+            rows = query.order_by(desc(ETFDaily.日期)).limit(limit).all()
+
         # 反转为日期升序
         rows = list(reversed(rows))
         return [
@@ -74,43 +92,65 @@ def get_daily(
 
 
 def get_quotes(codes: List[str]) -> List[dict]:
-    """批量获取股票行情（从 StockDaily 取最新收盘数据）"""
+    """批量获取股票/ETF行情（从 StockDaily/ETFDaily 取最新收盘数据）"""
     session = db.get_session()
     try:
         results = []
         for code in codes:
-            # 获取股票名称
+            # 获取名称：先查 StockBasic，fallback ETFBasic
             basic = (
                 session.query(StockBasic)
                 .filter(StockBasic.code == code)
                 .first()
             )
-            name = basic.股票简称 if basic else code
+            if basic and basic.股票简称:
+                name = basic.股票简称
+            else:
+                etf_basic = session.query(ETFBasic).filter(ETFBasic.code == code).first()
+                name = etf_basic.name if etf_basic else code
 
-            # 获取最新日 K
+            # 获取最新日 K：先查 StockDaily，fallback ETFDaily
             latest = (
                 session.query(StockDaily)
                 .filter(StockDaily.code == code)
                 .order_by(desc(StockDaily.日期))
                 .first()
             )
+            prev = None
+            if latest:
+                prev = (
+                    session.query(StockDaily)
+                    .filter(
+                        StockDaily.code == code,
+                        StockDaily.日期 < latest.日期,
+                    )
+                    .order_by(desc(StockDaily.日期))
+                    .first()
+                )
+            else:
+                # fallback: ETF
+                latest = (
+                    session.query(ETFDaily)
+                    .filter(ETFDaily.code == code)
+                    .order_by(desc(ETFDaily.日期))
+                    .first()
+                )
+                if latest:
+                    prev = (
+                        session.query(ETFDaily)
+                        .filter(
+                            ETFDaily.code == code,
+                            ETFDaily.日期 < latest.日期,
+                        )
+                        .order_by(desc(ETFDaily.日期))
+                        .first()
+                    )
 
             if not latest:
                 results.append(
                     {"code": code, "name": name, "close": None, "change_pct": None}
                 )
                 continue
-
-            # 获取前一日用于计算涨跌幅
-            prev = (
-                session.query(StockDaily)
-                .filter(
-                    StockDaily.code == code,
-                    StockDaily.日期 < latest.日期,
-                )
-                .order_by(desc(StockDaily.日期))
-                .first()
-            )
 
             results.append(
                 {

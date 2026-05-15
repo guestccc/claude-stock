@@ -17,6 +17,8 @@ from .database import (
     FundWatchlist,
     FundEstimation,
     FundNavHistory,
+    ETFBasic,
+    ETFDaily,
     DatabaseManager,
 )
 from .config import (
@@ -48,6 +50,9 @@ __all__ = [
     'FundWatchlist',
     'FundEstimation',
     'FundNavHistory',
+    # ETF 模型
+    'ETFBasic',
+    'ETFDaily',
     # 配置
     'DB_PATH',
     'MINUTE_KEEP_DAYS',

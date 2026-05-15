@@ -24,6 +24,13 @@ from .fetchers import (
     add_watchlist,
     remove_watchlist,
     get_watchlist_codes,
+    # ETF
+    fetch_etf_basic,
+    fetch_etf_daily,
+    fetch_etf_daily_incremental,
+    fetch_all_etf_daily,
+    fetch_etf_daily_full_history,
+    fetch_etf_realtime_ths,
 )
 from .scheduler import start_scheduler, run_scheduler, get_scheduler
 
@@ -61,4 +68,11 @@ __all__ = [
     'add_watchlist',
     'remove_watchlist',
     'get_watchlist_codes',
+    # ETF
+    'fetch_etf_basic',
+    'fetch_etf_daily',
+    'fetch_etf_daily_incremental',
+    'fetch_all_etf_daily',
+    'fetch_etf_daily_full_history',
+    'fetch_etf_realtime_ths',
 ]

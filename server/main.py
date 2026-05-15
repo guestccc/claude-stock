@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from server.config import PROJECT_ROOT, CORS_ORIGINS, API_PREFIX
-from server.routers import market, watchlist, screener, backtest, portfolio, system, fund, board
+from server.routers import market, watchlist, screener, backtest, portfolio, system, fund, board, etf
 
 
 @asynccontextmanager
@@ -45,6 +45,7 @@ app.include_router(portfolio.router, prefix=API_PREFIX)
 app.include_router(system.router, prefix=API_PREFIX)
 app.include_router(fund.router, prefix=API_PREFIX)
 app.include_router(board.router, prefix=API_PREFIX)
+app.include_router(etf.router, prefix=API_PREFIX)
 
 # 生产环境：serve React 构建产物
 # app.mount("/", StaticFiles(directory="web/dist", html=True), name="static")

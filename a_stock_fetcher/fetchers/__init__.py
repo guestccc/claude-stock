@@ -9,6 +9,14 @@ from .financial import fetch_stock_financial
 from .concept import fetch_concept, fetch_industry, fetch_all_boards
 from .clean import clean_daily_data
 from .fund import fetch_fund_estimation, fetch_watchlist_estimations, add_watchlist, remove_watchlist, get_watchlist_codes
+from .etf import (
+    fetch_etf_basic,
+    fetch_etf_daily,
+    fetch_etf_daily_incremental,
+    fetch_all_etf_daily,
+    fetch_etf_daily_full_history,
+    fetch_etf_realtime_ths,
+)
 
 __all__ = [
     'fetch_stock_basic',
@@ -35,4 +43,11 @@ __all__ = [
     'add_watchlist',
     'remove_watchlist',
     'get_watchlist_codes',
+    # ETF
+    'fetch_etf_basic',
+    'fetch_etf_daily',
+    'fetch_etf_daily_incremental',
+    'fetch_all_etf_daily',
+    'fetch_etf_daily_full_history',
+    'fetch_etf_realtime_ths',
 ]

@@ -327,6 +327,54 @@ class CTADonchianScan(Base):
     )
 
 
+class ETFBasic(Base):
+    """
+    ETF 基础信息表
+    数据来源: akshare.fund_etf_fund_daily_em()
+    """
+    __tablename__ = 'etf_basic'
+
+    code = Column(String(10), primary_key=True, comment='ETF代码')
+    name = Column(String(100), nullable=False, comment='ETF名称')
+    etf_type = Column(String(50), comment='ETF类型(指数型-股票/固收/海外)')
+    nav = Column(Float, comment='单位净值')
+    acc_nav = Column(Float, comment='累计净值')
+    market_price = Column(Float, comment='市价(场内交易价)')
+    discount_rate = Column(Float, comment='折价率(%)')
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    raw_data = Column(Text, comment='原始JSON数据备份')
+
+
+class ETFDaily(Base):
+    """
+    ETF 日线行情表
+    数据来源: akshare.fund_etf_hist_em(symbol=code, period="daily")
+    字段与 stock_daily 完全一致，便于复用缠论分析等逻辑
+    """
+    __tablename__ = 'etf_daily'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment='ETF代码')
+    日期 = Column(DateTime, nullable=False, comment='日期-akshare原始字段')
+    开盘 = Column(Float, comment='开盘价(元)-akshare原始字段')
+    收盘 = Column(Float, comment='收盘价(元)-akshare原始字段')
+    最高 = Column(Float, comment='最高价(元)-akshare原始字段')
+    最低 = Column(Float, comment='最低价(元)-akshare原始字段')
+    成交量 = Column(Float, comment='成交量(手)-akshare原始字段')
+    成交额 = Column(Float, comment='成交额(元)-akshare原始字段')
+    振幅 = Column(Float, comment='振幅(%)-akshare原始字段')
+    涨跌幅 = Column(Float, comment='涨跌幅(%)-akshare原始字段')
+    涨跌额 = Column(Float, comment='涨跌额(元)-akshare原始字段')
+    换手率 = Column(Float, comment='换手率(%)-akshare原始字段')
+    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
+    raw_data = Column(Text, comment='原始JSON数据备份')
+
+    __table_args__ = (
+        UniqueConstraint('code', '日期', name='uq_etf_code_date'),
+        Index('idx_etf_trade_date', '日期'),
+    )
+
+
 class DatabaseManager:
     """数据库管理类"""
 

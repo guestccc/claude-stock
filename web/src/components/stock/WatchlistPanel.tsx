@@ -1,5 +1,6 @@
 /** 自选股面板 — 右侧列表，点击切换股票 */
 import { useState, useEffect, useCallback } from 'react'
+import { PushpinOutlined, PushpinFilled } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { colors, changeColor, changeSign } from '../../theme/tokens'
 import {
@@ -221,7 +222,7 @@ export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
               >
                 <div style={{ flex: 1, minWidth: 0 }} onClick={() => navigate(`/market/${item.code}`)}>
                   <div style={S.codeText}>
-                    {pinned && <span style={{ color: '#f5a742', marginRight: 4 }}>★</span>}
+                    {pinned && <PushpinFilled style={{ color: '#f5a742', fontSize: 10, marginRight: 4 }} />}
                     {item.code}
                   </div>
                   <div style={S.nameText}>{item.name}</div>

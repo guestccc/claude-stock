@@ -8,6 +8,7 @@ import BacktestPage from './pages/BacktestPage'
 import PortfolioPage from './pages/PortfolioPage'
 import FundPage from './pages/FundPage'
 import FundDetailPage from './pages/FundDetailPage'
+import ETFListPage from './pages/ETFListPage'
 import BoardPage from './pages/BoardPage'
 import BoardConceptDetailPage from './pages/BoardConceptDetailPage'
 import SettingsPage from './pages/SettingsPage'
@@ -42,6 +43,8 @@ export default function App() {
             <Route path="/portfolio" element={<PortfolioPage />} />
             <Route path="/fund" element={<FundPage />} />
             <Route path="/fund/:code" element={<FundDetailPage />} />
+            <Route path="/etf" element={<ETFListPage />} />
+            <Route path="/etf/:code" element={<ETFListPage />} />
             <Route path="/board" element={<BoardPage />} />
             <Route path="/board/concept/:name" element={<BoardConceptDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />

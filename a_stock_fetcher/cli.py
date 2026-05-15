@@ -3,6 +3,7 @@ CLI 入口
 """
 import sys
 from a_stock_db import db
+from a_stock_db.config import REQUEST_DELAY
 from a_stock_fetcher import (
     fetch_stock_basic,
     fetch_all_stocks_daily,
@@ -20,6 +21,10 @@ from a_stock_fetcher import (
     fetch_watchlist_estimations,
     add_watchlist,
     remove_watchlist,
+    # ETF
+    fetch_etf_basic,
+    fetch_all_etf_daily,
+    fetch_etf_daily_full_history,
 )
 
 
@@ -44,6 +49,9 @@ HELP_TEXT = """
   fund-update            - 更新所有自选基金实时估值
   fund-remove <CODE>     - 移除自选基金
   fund-list              - 查看自选基金列表
+  etf-basic              - 同步 ETF 基础信息（全量刷新）
+  etf-daily [N]          - 批量获取 ETF 日线数据（增量更新）
+  etf-daily-full <CODE>  - 获取单只 ETF 全部历史日线数据
   rules/rules2/rules3   - 查看配置规则
   scheduler              - 启动定时任务调度器
   status                 - 查看调度器状态
@@ -280,6 +288,31 @@ def main():
             print(f"{w.code:<10} {w.added_at.strftime('%Y-%m-%d') if w.added_at else '-':<12}  {date}")
         session.close()
 
+    elif cmd == "etf-basic":
+        print("=" * 50)
+        print("同步 ETF 基础信息")
+        print("=" * 50)
+        result = fetch_etf_basic()
+        print(f"完成: {result.get('success', 0)}/{result.get('total', 0)} 只")
+
+    elif cmd == "etf-daily":
+        fetch_all_etf_daily(limit=limit, delay=REQUEST_DELAY)
+
+    elif cmd == "etf-daily-full":
+        if not args or args[0].startswith('--'):
+            print("用法: python3 -m a_stock_fetcher.cli etf-daily-full <ETF代码>")
+            print("示例: python3 -m a_stock_fetcher.cli etf-daily-full 510300")
+            return
+        code = args[0].strip()
+        print(f"=" * 50)
+        print(f"获取 {code} 全部历史日线数据...")
+        print(f"=" * 50)
+        result = fetch_etf_daily_full_history(code)
+        if isinstance(result, str):
+            print(result)
+        else:
+            print(f"结果: {result}")
+
     elif cmd == "scheduler":
         run_scheduler()
 
@@ -308,7 +341,7 @@ def main():
 
     elif cmd in ("rules", "rules2", "rules3"):
         from a_stock_db.config import (
-            REQUEST_DELAY, MINUTE_KEEP_DAYS, MINUTE_STOCK_LIMIT,
+            MINUTE_KEEP_DAYS, MINUTE_STOCK_LIMIT,
             DAILY_HISTORY_DAYS, ADJUST, TRADING_HOURS, ENABLED_EXCHANGES,
         )
         print("=" * 60)
