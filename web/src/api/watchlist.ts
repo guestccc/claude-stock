@@ -31,8 +31,8 @@ export async function removeWatchlist(id: number): Promise<void> {
   await client.delete(`/watchlist/${id}`)
 }
 
-/** 更新自选股备注 */
-export async function updateWatchlist(id: number, note: string): Promise<WatchlistItem> {
-  const { data } = await client.put<WatchlistItem>(`/watchlist/${id}`, { note })
+/** 更新自选股（备注、排序等） */
+export async function updateWatchlist(id: number, body: { note?: string; sort_order?: number }): Promise<WatchlistItem> {
+  const { data } = await client.put<WatchlistItem>(`/watchlist/${id}`, body)
   return data
 }

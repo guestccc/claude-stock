@@ -6,6 +6,7 @@ import {
   getWatchlist,
   addWatchlist,
   removeWatchlist,
+  updateWatchlist,
   type WatchlistItem,
 } from '../../api/watchlist'
 import { getQuotes, type QuoteItem } from '../../api/market'
@@ -163,6 +164,24 @@ export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
     }
   }
 
+  // 置顶/取消置顶
+  const handlePin = async (item: WatchlistItem) => {
+    try {
+      if (item.sort_order < 0) {
+        // 已置顶 → 取消：设为最大 sort_order + 1（排到最后）
+        const maxSort = Math.max(...items.map((i) => i.sort_order))
+        await updateWatchlist(item.id, { sort_order: maxSort + 1 })
+      } else {
+        // 未置顶 → 置顶：设为最小 sort_order - 1
+        const minSort = Math.min(...items.map((i) => i.sort_order))
+        await updateWatchlist(item.id, { sort_order: minSort - 1 })
+      }
+      await loadList()
+    } catch {
+      // ignore
+    }
+  }
+
   return (
     <div style={S.panel}>
       <div style={S.header}>
@@ -177,19 +196,34 @@ export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
             const q = quotes[item.code]
             const isActive = item.code === currentCode
             const chgPct = q?.change_pct
+            const pinned = item.sort_order < 0
             return (
               <div
                 key={item.id}
-                style={{ ...S.row, ...(isActive ? S.rowActive : {}) }}
+                style={{
+                  ...S.row,
+                  ...(isActive ? S.rowActive : {}),
+                  ...(pinned ? { borderTop: `1px solid ${colors.accent}` } : {}),
+                }}
                 onMouseEnter={(e) => {
-                  if (!isActive) (e.currentTarget as HTMLElement).style.background = colors.bgHover
+                  const el = e.currentTarget as HTMLElement
+                  if (!isActive) el.style.background = colors.bgHover
+                  // hover 时显示置顶按钮
+                  const pinBtn = el.querySelector('.pin-btn') as HTMLElement
+                  if (pinBtn && !pinned) pinBtn.style.opacity = '0.5'
                 }}
                 onMouseLeave={(e) => {
-                  if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'
+                  const el = e.currentTarget as HTMLElement
+                  if (!isActive) el.style.background = 'transparent'
+                  const pinBtn = el.querySelector('.pin-btn') as HTMLElement
+                  if (pinBtn && !pinned) pinBtn.style.opacity = '0'
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }} onClick={() => navigate(`/market/${item.code}`)}>
-                  <div style={S.codeText}>{item.code}</div>
+                  <div style={S.codeText}>
+                    {pinned && <span style={{ color: '#f5a742', marginRight: 4 }}>★</span>}
+                    {item.code}
+                  </div>
                   <div style={S.nameText}>{item.name}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -204,6 +238,18 @@ export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
                     </>
                   )}
                 </div>
+                <button
+                  className="pin-btn"
+                  style={{
+                    ...S.removeBtn,
+                    opacity: pinned ? 0.9 : 0,
+                    color: pinned ? '#f5a742' : colors.textMuted,
+                  }}
+                  onClick={(e) => { e.stopPropagation(); handlePin(item) }}
+                  title={pinned ? '取消置顶' : '置顶'}
+                >
+                  {pinned ? '★' : '☆'}
+                </button>
                 <button style={S.removeBtn} onClick={(e) => { e.stopPropagation(); handleRemove(item.id) }} title="删除">
                   ×
                 </button>
