@@ -310,14 +310,20 @@ def get_concept_kline(name: str, period: str = 'Y1', code: str = '') -> dict:
     # 2. 判断是否需要从 akshare 更新
     weekday = datetime.now().weekday()
     is_weekend = weekday >= 5
+    db_earliest = db_bars[0]['date'] if db_bars else None
     db_latest = db_bars[-1]['date'] if db_bars else None
-    need_fetch = (not db_bars) or (db_latest < today and not is_weekend)
+    has_full_range = db_earliest and db_earliest <= start_date
+    need_fetch = (not db_bars) or (db_latest < today and not is_weekend) or not has_full_range
 
     if need_fetch:
-        if db_bars:
-            fetch_start = (datetime.strptime(db_latest, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y%m%d')
-        else:
+        if not db_bars:
             fetch_start = start_dt.strftime('%Y%m%d')
+        elif not has_full_range:
+            # 缺少历史数据：从 period 起点开始拉
+            fetch_start = start_dt.strftime('%Y%m%d')
+        else:
+            # 只缺最新数据
+            fetch_start = (datetime.strptime(db_latest, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y%m%d')
         fetch_end = datetime.now().strftime('%Y%m%d')
 
         try:
@@ -332,6 +338,71 @@ def get_concept_kline(name: str, period: str = 'Y1', code: str = '') -> dict:
     result = {'name': name, 'data': db_bars}
     _kline_cache[cache_key] = {'data': result, 'updated_at': now}
     return result
+
+
+# ---------- 板块K线全量同步 ----------
+
+def sync_all_concept_kline(start_date: str = None, delay: float = 0.5, batch_size: int = 50) -> dict:
+    """遍历同花顺所有概念板块，拉取完整历史K线写入DB
+
+    start_date: 起始日期(YYYYMMDD)，默认20150101
+    delay: 板块间请求间隔(秒)
+    batch_size: 每处理多少个板块后暂停更长
+    """
+    if start_date is None:
+        start_date = '20150101'
+    today = datetime.now().strftime('%Y%m%d')
+    today_fmt = datetime.now().strftime('%Y-%m-%d')
+
+    # 获取所有概念板块名称
+    name_map = _ensure_ths_name_map()
+    names = list(name_map.values())
+    total = len(names)
+    success = 0
+    failed = 0
+
+    print(f'开始同步 {total} 个概念板块K线，起始日期: {start_date}，间隔: {delay}s')
+    print('=' * 60)
+
+    for idx, name in enumerate(names, 1):
+        try:
+            # 查DB已有数据
+            db_bars = _query_kline_from_db(name, '2015-01-01', today_fmt)
+            if db_bars:
+                db_earliest = db_bars[0]['date']
+                db_latest = db_bars[-1]['date']
+                fetch_start = (datetime.strptime(db_latest, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y%m%d')
+                if fetch_start > today:
+                    print(f'[{idx:>3}/{total}] {name:<20s} 已最新，跳过')
+                    success += 1
+                    continue
+            else:
+                db_earliest = '-'
+                db_latest = '-'
+                fetch_start = start_date
+
+            bars = _fetch_kline_from_akshare(name, fetch_start, today)
+            if bars:
+                _save_kline_to_db(name, bars)
+                print(f'[{idx:>3}/{total}] {name:<20s} {db_earliest}~{today_fmt}  +{len(bars)}条  OK')
+            else:
+                print(f'[{idx:>3}/{total}] {name:<20s} 无数据')
+            success += 1
+        except Exception as e:
+            print(f'[{idx:>3}/{total}] {name:<20s} 失败: {e}')
+            failed += 1
+
+        time.sleep(delay)
+
+        # 每批暂停更长，防IP被封
+        if idx % batch_size == 0 and idx < total:
+            pause = 5
+            print(f'  -- 已处理 {idx}/{total} 个，暂停 {pause}s --')
+            time.sleep(pause)
+
+    print('=' * 60)
+    print(f'完成: 成功 {success}/{total}，失败 {failed}/{total}')
+    return {'total': total, 'success': success, 'failed': failed}
 
 
 # ---------- 板块关注 ----------

@@ -26,6 +26,7 @@ from a_stock_fetcher import (
     fetch_all_etf_daily,
     fetch_etf_daily_full_history,
 )
+from server.services.board_service import sync_all_concept_kline
 
 
 HELP_TEXT = """
@@ -52,6 +53,7 @@ HELP_TEXT = """
   etf-basic              - 同步 ETF 基础信息（全量刷新）
   etf-daily [N]          - 批量获取 ETF 日线数据（增量更新）
   etf-daily-full <CODE>  - 获取单只 ETF 全部历史日线数据
+  board-kline-full       - 同步所有概念板块历史K线（首次运行较慢）
   rules/rules2/rules3   - 查看配置规则
   scheduler              - 启动定时任务调度器
   status                 - 查看调度器状态
@@ -312,6 +314,29 @@ def main():
             print(result)
         else:
             print(f"结果: {result}")
+
+    elif cmd == "board-kline-full":
+        start_date = '20150101'
+        delay = 0.5
+        batch = 50
+        i = 0
+        while i < len(args):
+            if args[i] == '--start' and i + 1 < len(args):
+                start_date = args[i + 1]
+                i += 2
+            elif args[i] == '--delay' and i + 1 < len(args):
+                delay = float(args[i + 1])
+                i += 2
+            elif args[i] == '--batch' and i + 1 < len(args):
+                batch = int(args[i + 1])
+                i += 2
+            else:
+                i += 1
+        print(f"=" * 60)
+        print(f"同步所有概念板块历史K线")
+        print(f"起始日期: {start_date}, 间隔: {delay}s, 批次: {batch}")
+        print(f"=" * 60)
+        sync_all_concept_kline(start_date=start_date, delay=delay, batch_size=batch)
 
     elif cmd == "scheduler":
         run_scheduler()
