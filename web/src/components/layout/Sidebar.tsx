@@ -71,11 +71,10 @@ const icons = {
 const navItems = [
   { path: '/market', label: '行情', icon: icons.market },
   { path: '/stocks', label: '列表', icon: icons.stocks },
-  { path: '/screener', label: '选股', icon: icons.screener },
+  { path: '/etf', label: 'ETF', icon: icons.etf },
   { path: '/backtest', label: '回测', icon: icons.backtest },
   { path: '/portfolio', label: '持仓', icon: icons.portfolio },
   { path: '/fund', label: '基金', icon: icons.fund },
-  { path: '/etf', label: 'ETF', icon: icons.etf },
   { path: '/board', label: '板块', icon: icons.board },
   { path: '/settings', label: '设置', icon: icons.settings },
 ]

@@ -81,10 +81,10 @@ const S = {
     border: 'none',
     color: colors.textMuted,
     cursor: 'pointer',
-    fontSize: 12,
-    padding: '0 2px',
+    fontSize: 16,
+    padding: '0 4px',
     lineHeight: 1,
-    opacity: 0.5,
+    opacity: 0.6,
   },
   addBtn: {
     display: 'flex',
@@ -209,15 +209,21 @@ export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
                 onMouseEnter={(e) => {
                   const el = e.currentTarget as HTMLElement
                   if (!isActive) el.style.background = colors.bgHover
-                  // hover 时显示置顶按钮
-                  const pinBtn = el.querySelector('.pin-btn') as HTMLElement
-                  if (pinBtn && !pinned) pinBtn.style.opacity = '0.5'
+                  // hover 时所有操作按钮变亮
+                  el.querySelectorAll('.pin-btn,.rm-btn').forEach((b) => {
+                    (b as HTMLElement).style.opacity = '0.9'
+                  })
                 }}
                 onMouseLeave={(e) => {
                   const el = e.currentTarget as HTMLElement
                   if (!isActive) el.style.background = 'transparent'
-                  const pinBtn = el.querySelector('.pin-btn') as HTMLElement
-                  if (pinBtn && !pinned) pinBtn.style.opacity = '0'
+                  // 恢复默认透明度
+                  el.querySelectorAll('.pin-btn').forEach((b) => {
+                    (b as HTMLElement).style.opacity = pinned ? '0.9' : '0.6'
+                  })
+                  el.querySelectorAll('.rm-btn').forEach((b) => {
+                    (b as HTMLElement).style.opacity = '0.6'
+                  })
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }} onClick={() => navigate(`/market/${item.code}`)}>
@@ -227,7 +233,7 @@ export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
                   </div>
                   <div style={S.nameText}>{item.name}</div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
+                <div style={{ textAlign: 'right', marginRight: 8 }}>
                   {q?.close != null && (
                     <>
                       <div style={{ ...S.priceText, color: changeColor(chgPct) }}>
@@ -243,15 +249,15 @@ export default function WatchlistPanel({ refreshKey }: WatchlistPanelProps) {
                   className="pin-btn"
                   style={{
                     ...S.removeBtn,
-                    opacity: pinned ? 0.9 : 0,
-                    color: pinned ? '#f5a742' : colors.textMuted,
+                    opacity: pinned ? 0.9 : 0.6,
+                    fontSize: 14,
                   }}
                   onClick={(e) => { e.stopPropagation(); handlePin(item) }}
                   title={pinned ? '取消置顶' : '置顶'}
                 >
-                  {pinned ? '★' : '☆'}
+                  {pinned ? <PushpinFilled style={{ color: '#f5a742' }} /> : <PushpinOutlined />}
                 </button>
-                <button style={S.removeBtn} onClick={(e) => { e.stopPropagation(); handleRemove(item.id) }} title="删除">
+                <button className="rm-btn" style={S.removeBtn} onClick={(e) => { e.stopPropagation(); handleRemove(item.id) }} title="删除">
                   ×
                 </button>
               </div>
