@@ -133,3 +133,28 @@ async def trigger_daily_clean(limit: int = Query(None, description="限制数量
     from a_stock_fetcher import clean_daily_data
     from server.services.task_manager import run_task
     return await run_task("daily_clean", "清洗日线数据", clean_daily_data, limit=limit)
+
+
+@router.post("/tasks/exright-fix")
+async def trigger_exright_fix():
+    """触发扫描并修复除权数据"""
+    guard = _check_running("exright_fix")
+    if guard:
+        return guard
+
+    from a_stock_fetcher.fetchers.daily import detect_and_fix_ex_rights
+    from server.services.task_manager import run_task, update_progress
+    return await run_task(
+        "exright_fix", "修复除权数据",
+        detect_and_fix_ex_rights,
+        progress_cb=lambda p, m: update_progress("exright_fix", p, m),
+        task_id="exright_fix",
+    )
+
+
+@router.post("/tasks/exright-fix/stop")
+async def stop_exright_fix():
+    """停止修复除权任务"""
+    from server.services.task_manager import stop_task
+    stop_task("exright_fix")
+    return {"ok": True, "message": "已发送停止信号"}

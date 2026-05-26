@@ -62,6 +62,10 @@ def _upsert_daily(session, daily: dict):
             "最低": daily["最低"],
             "成交量": daily["成交量"],
             "成交额": daily["成交额"],
+            "振幅": daily["振幅"],
+            "涨跌幅": daily["涨跌幅"],
+            "涨跌额": daily["涨跌额"],
+            "换手率": daily["换手率"],
             "raw_data": daily["raw_data"],
         }
     )
@@ -544,3 +548,167 @@ def fetch_stock_daily_full_history(code: str, delay: float = REQUEST_DELAY) -> s
 
 if __name__ == '__main__':
     fetch_all_stocks_daily(limit=10)
+
+
+# ---------- 除权修复 ----------
+
+def _refetch_after_ex_rights(code: str, task_id: str = None) -> int:
+    """检测到除权后，重拉该股票近2年前复权数据并覆盖写入
+
+    从2年缩短到2年（足够覆盖绝大多数除权场景），避免5年20批太慢导致卡住。
+    :return: 写入条数
+    """
+    from server.services.task_manager import should_stop
+
+    provider = get_provider()
+    today = datetime.now().date()
+    # 2年 ≈ 8批（每批90天），比5年20批快很多
+    start_dt = today - timedelta(days=365 * 2)
+
+    all_records = []
+    current_start = start_dt
+    batch_count = 0
+    max_batches = 10
+
+    while current_start < today and batch_count < max_batches:
+        # 检查是否被要求终止
+        if task_id and should_stop(task_id):
+            raise InterruptedError("任务被要求终止")
+
+        current_end = min(current_start + timedelta(days=90), today)
+        try:
+            batch = provider.fetch_daily(
+                code,
+                current_start.strftime('%Y-%m-%d'),
+                current_end.strftime('%Y-%m-%d'),
+            )
+        except Exception:
+            batch = []
+        all_records.extend(batch)
+        current_start = current_end + timedelta(days=1)
+        batch_count += 1
+        time.sleep(0.05)
+
+    if not all_records:
+        return 0
+
+    session = db.get_session()
+    try:
+        count = 0
+        for record in all_records:
+            daily = _build_daily_dict(code, record, provider.name())
+            _upsert_daily(session, daily)
+            count += 1
+        session.commit()
+        return count
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def detect_and_fix_ex_rights(progress_cb=None, task_id: str = None) -> dict:
+    """扫描所有股票，检测除权导致的前复权数据不一致，自动全量重拉修复
+
+    检测原理：从 API 拉取每只股票最近 5 天前复权数据，和 DB 逐天对比收盘价。
+    任意一天不一致说明发生了除权，触发该股票近 2 年全量重拉。
+
+    :param progress_cb: 可选回调 (progress: float, message: str) -> None
+    :param task_id: 任务ID，用于检查终止请求
+    :return: {'total': N, 'fixed': M, 'ok': K, 'failed': F}
+    """
+    from a_stock_db import StockBasic
+    from server.services.task_manager import should_stop
+
+    provider = get_provider()
+    today = datetime.now().date()
+    # 拉最近 10 天数据用于对比（多拉几天覆盖周末/节假日）
+    check_start = (today - timedelta(days=10)).strftime('%Y-%m-%d')
+
+    # 1. 获取所有股票代码
+    session = db.get_session()
+    try:
+        stocks = session.query(StockBasic.code, StockBasic.股票简称).all()
+    finally:
+        session.close()
+
+    total = len(stocks)
+    fixed = 0
+    ok = 0
+    failed = 0
+
+    for i, (code, name) in enumerate(stocks):
+        # 检查是否被要求终止
+        if task_id and should_stop(task_id):
+            msg = f"[{i+1}/{total}] 任务被用户终止"
+            print(msg)
+            if progress_cb:
+                progress_cb((i + 1) / total, msg)
+            break
+
+        progress = (i + 1) / total
+        try:
+            # 从 API 拉最近 10 天前复权数据
+            api_records = provider.fetch_daily(code, check_start, today.strftime('%Y-%m-%d'))
+            if not api_records:
+                ok += 1
+                continue
+
+            # 查 DB 中相同日期范围的收盘价
+            session = db.get_session()
+            try:
+                db_rows = session.query(
+                    StockDaily.日期, StockDaily.收盘
+                ).filter(
+                    StockDaily.code == code,
+                    StockDaily.日期 >= check_start,
+                    StockDaily.日期 <= today,
+                ).all()
+                db_close_map = {
+                    r.日期.strftime('%Y-%m-%d') if hasattr(r.日期, 'strftime') else str(r.日期)[:10]: r.收盘
+                    for r in db_rows
+                }
+            finally:
+                session.close()
+
+            # 逐天对比
+            mismatch = False
+            for r in api_records:
+                date_str = str(r['date'])[:10]
+                db_close = db_close_map.get(date_str)
+                if db_close is not None and r['close'] is not None:
+                    if abs(float(r['close']) - float(db_close)) > 0.01:
+                        mismatch = True
+                        break
+
+            if mismatch:
+                count = _refetch_after_ex_rights(code, task_id=task_id)
+                fixed += 1
+                msg = f"[{i+1}/{total}] {code} {name or ''} ⚠️ 除权修复，重写{count}条"
+                print(msg)
+                if progress_cb:
+                    progress_cb(progress, msg)
+                time.sleep(0.3)
+            else:
+                ok += 1
+                if progress_cb and (i + 1) % 200 == 0:
+                    progress_cb(progress, f"[{i+1}/{total}] 扫描中，已检查 {ok} 只，修复 {fixed} 只")
+
+        except InterruptedError:
+            break
+        except Exception as e:
+            failed += 1
+            msg = f"[{i+1}/{total}] {code} {name or ''} 失败: {e}"
+            print(msg)
+            if progress_cb:
+                progress_cb(progress, msg)
+
+        time.sleep(0.03)
+
+    result = {'total': total, 'fixed': fixed, 'ok': ok, 'failed': failed}
+    result_str = f"完成: 扫描{total}只，修复{fixed}只，正常{ok}只，失败{failed}只"
+    print(result_str)
+    if progress_cb:
+        progress_cb(1.0, result_str)
+    return result

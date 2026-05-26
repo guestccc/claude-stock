@@ -71,10 +71,10 @@ def get_watchlist(cache_minutes: int = 2) -> List[dict]:
             if est:
                 latest[code] = est
 
-        # 查近10日历史净值（从缓存表，纯 DB 查询）
+        # 查近3月历史净值（约90条，从缓存表，纯 DB 查询）
         history = {}
         for code in codes:
-            hist = get_recent_nav(code, 10)
+            hist = get_recent_nav(code, 90)
             if hist:
                 history[code] = hist
 
@@ -85,12 +85,14 @@ def get_watchlist(cache_minutes: int = 2) -> List[dict]:
             est = latest.get(code)
             hist = history.get(code, [])
 
+            # 近10日涨跌（取最后10条计算）
             nav_change = None
             if hist and len(hist) >= 2:
-                first_nav = hist[0]['nav']
-                last_nav = hist[-1]['nav']
-                if last_nav and first_nav and last_nav != 0:
-                    nav_change = (first_nav - last_nav) / last_nav * 100
+                last_10 = hist[-10:] if len(hist) >= 10 else hist
+                first_nav = last_10[0]['nav']
+                last_nav = last_10[-1]['nav']
+                if first_nav and last_nav and first_nav != 0:
+                    nav_change = (last_nav - first_nav) / first_nav * 100
 
             results.append({
                 'code': code,

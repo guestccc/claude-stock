@@ -342,6 +342,21 @@ def get_concept_kline(name: str, period: str = 'Y1', code: str = '') -> dict:
 
 # ---------- 板块K线全量同步 ----------
 
+def _get_existing_board_names() -> dict:
+    """获取DB中已存的概念板块名称和日期范围 {name: (earliest, latest)}"""
+    session = db.get_session()
+    try:
+        from sqlalchemy import func
+        rows = session.query(
+            BoardConceptDaily.name,
+            func.min(BoardConceptDaily.date),
+            func.max(BoardConceptDaily.date),
+        ).group_by(BoardConceptDaily.name).all()
+        return {r[0]: (str(r[1])[:10], str(r[2])[:10]) for r in rows}
+    finally:
+        session.close()
+
+
 def sync_all_concept_kline(start_date: str = None, delay: float = 0.5, batch_size: int = 50) -> dict:
     """遍历同花顺所有概念板块，拉取完整历史K线写入DB
 
@@ -354,42 +369,54 @@ def sync_all_concept_kline(start_date: str = None, delay: float = 0.5, batch_siz
     today = datetime.now().strftime('%Y%m%d')
     today_fmt = datetime.now().strftime('%Y-%m-%d')
 
-    # 获取所有概念板块名称
+    # 从同花顺拿全量列表（发现新增板块），从DB拿已有数据（避免名称不匹配）
     name_map = _ensure_ths_name_map()
-    names = list(name_map.values())
-    total = len(names)
-    success = 0
-    failed = 0
-
-    print(f'开始同步 {total} 个概念板块K线，起始日期: {start_date}，间隔: {delay}s')
+    existing = _get_existing_board_names()
+    new_count = len(name_map) - len(existing)
+    print(f'同花顺共 {len(name_map)} 个概念板块，DB已有 {len(existing)} 个，新增 {new_count} 个')
+    print(f'起始日期: {start_date}，间隔: {delay}s')
     print('=' * 60)
 
-    for idx, name in enumerate(names, 1):
-        try:
-            # 查DB已有数据
-            db_bars = _query_kline_from_db(name, '2015-01-01', today_fmt)
-            if db_bars:
-                db_earliest = db_bars[0]['date']
-                db_latest = db_bars[-1]['date']
-                fetch_start = (datetime.strptime(db_latest, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y%m%d')
-                if fetch_start > today:
-                    print(f'[{idx:>3}/{total}] {name:<20s} 已最新，跳过')
-                    success += 1
-                    continue
-            else:
-                db_earliest = '-'
-                db_latest = '-'
-                fetch_start = start_date
+    total = len(name_map)
+    success = 0
+    skipped = 0
+    failed = 0
 
+    for idx, (code, name) in enumerate(name_map.items(), 1):
+        if name in existing:
+            # DB已有：增量补最新
+            db_earliest, db_latest = existing[name]
+            fetch_start = (datetime.strptime(db_latest, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y%m%d')
+            if fetch_start > today:
+                print(f'[{idx:>3}/{total}] {name:<20s} 已最新({db_latest})，跳过')
+                skipped += 1
+                continue
+            tag = '增量'
+        else:
+            # 新板块：全量拉取
+            db_earliest = '-'
+            db_latest = '-'
+            fetch_start = start_date
+            tag = '新增'
+
+        try:
             bars = _fetch_kline_from_akshare(name, fetch_start, today)
+            # 新板块可能 start_date 太早不存在，退化为最近3年再试
+            if not bars and tag == '新增':
+                fallback_start = (datetime.now() - timedelta(days=1095)).strftime('%Y%m%d')
+                bars = _fetch_kline_from_akshare(name, fallback_start, today)
             if bars:
                 _save_kline_to_db(name, bars)
-                print(f'[{idx:>3}/{total}] {name:<20s} {db_earliest}~{today_fmt}  +{len(bars)}条  OK')
+                print(f'[{idx:>3}/{total}] {name:<20s} [{tag}] {db_earliest}~{db_latest}  +{len(bars)}条  OK')
+            elif tag == '增量':
+                # 增量无数据=已最新，不打印（太多），计数即可
+                skipped += 1
+                continue
             else:
-                print(f'[{idx:>3}/{total}] {name:<20s} 无数据')
+                print(f'[{idx:>3}/{total}] {name:<20s} [新增] 无数据')
             success += 1
         except Exception as e:
-            print(f'[{idx:>3}/{total}] {name:<20s} 失败: {e}')
+            print(f'[{idx:>3}/{total}] {name:<20s} [{tag}] 失败: {e}')
             failed += 1
 
         time.sleep(delay)
@@ -401,8 +428,8 @@ def sync_all_concept_kline(start_date: str = None, delay: float = 0.5, batch_siz
             time.sleep(pause)
 
     print('=' * 60)
-    print(f'完成: 成功 {success}/{total}，失败 {failed}/{total}')
-    return {'total': total, 'success': success, 'failed': failed}
+    print(f'完成: 新增/更新 {success}，跳过 {skipped}，失败 {failed}')
+    return {'total': total, 'success': success, 'skipped': skipped, 'failed': failed}
 
 
 # ---------- 板块关注 ----------

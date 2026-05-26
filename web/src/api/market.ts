@@ -70,6 +70,8 @@ export async function getStockList(params?: {
   sort_order?: string
   page?: number
   page_size?: number
+  donchian_filter?: string
+  index_filter?: string
 }): Promise<{ data: StockListItem[]; total: number; page: number; page_size: number }> {
   const { data } = await client.get('/market/stocks', { params })
   return data

@@ -7,7 +7,7 @@ import asyncio
 import time
 from enum import Enum
 from typing import Optional, Callable, Any
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 
 
 class TaskStatus(str, Enum):
@@ -26,10 +26,24 @@ class TaskRecord:
     finished_at: Optional[float] = None
     message: str = ""
     error: Optional[str] = None
+    progress: Optional[float] = None
+    log_lines: list = field(default_factory=list)
 
 
 # 全局内存存储（server 重启后清空，管理面板可接受）
 _tasks: dict[str, TaskRecord] = {}
+_stop_flags: set[str] = set()
+
+
+def should_stop(task_id: str) -> bool:
+    """子线程调用，检查是否被要求停止"""
+    return task_id in _stop_flags
+
+
+def stop_task(task_id: str) -> bool:
+    """标记任务为要求停止（任务需在执行中主动检查 should_stop）"""
+    _stop_flags.add(task_id)
+    return True
 
 
 def get_all_tasks() -> list[dict]:
@@ -42,6 +56,18 @@ def get_task(task_id: str) -> Optional[dict]:
     if task_id not in _tasks:
         return None
     return asdict(_tasks[task_id])
+
+
+def update_progress(task_id: str, progress: float, message: str = ""):
+    """子线程调用，更新任务进度"""
+    if task_id not in _tasks:
+        return
+    _tasks[task_id].progress = progress
+    if message:
+        _tasks[task_id].message = message
+        _tasks[task_id].log_lines.append(message)
+        if len(_tasks[task_id].log_lines) > 30:
+            _tasks[task_id].log_lines = _tasks[task_id].log_lines[-30:]
 
 
 async def run_task(task_id: str, name: str, fn: Callable, *args: Any, **kwargs: Any) -> dict:
@@ -63,11 +89,13 @@ async def run_task(task_id: str, name: str, fn: Callable, *args: Any, **kwargs: 
     try:
         result = await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
         record.status = TaskStatus.COMPLETED
+        record.progress = 1.0
         record.message = str(result) if result is not None else "done"
     except Exception as e:
         record.status = TaskStatus.FAILED
         record.error = f"{type(e).__name__}: {str(e)}"
     finally:
         record.finished_at = time.time()
+        _stop_flags.discard(task_id)
 
     return asdict(record)

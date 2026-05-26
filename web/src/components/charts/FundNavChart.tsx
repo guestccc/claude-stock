@@ -8,20 +8,15 @@ import { colors, fonts } from '../../theme/tokens'
 interface Props {
   data: FundNavPoint[]
   height?: number
+  compact?: boolean
 }
 
-export default function FundNavChart({ data, height = 400 }: Props) {
+export default function FundNavChart({ data, height = 400, compact = false }: Props) {
   const option = useMemo(() => {
     if (!data || data.length === 0) return {}
 
     const dates = data.map(d => d.date)
     const navs = data.map(d => d.nav)
-
-    // 5 日 / 10 日均线
-    const ma = (arr: number[], n: number) =>
-      arr.map((_, i) => i < n - 1 ? null : arr.slice(i - n + 1, i + 1).reduce((a, b) => a + b, 0) / n)
-    const ma5 = ma(navs, 5)
-    const ma10 = ma(navs, 10)
 
     // 首尾对比决定颜色：涨红跌绿
     const first = navs[0]
@@ -30,6 +25,47 @@ export default function FundNavChart({ data, height = 400 }: Props) {
     const lineColor = isUp ? colors.rise : colors.fall
     const areaColorTop = isUp ? 'rgba(224,102,102,0.25)' : 'rgba(92,184,92,0.25)'
     const areaColorBottom = 'rgba(0,0,0,0)'
+
+    const series: any[] = [{
+      name: '净值',
+      type: 'line',
+      data: navs,
+      smooth: true,
+      showSymbol: false,
+      lineStyle: { width: compact ? 1.2 : 1.5, color: lineColor },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: areaColorTop },
+          { offset: 1, color: areaColorBottom },
+        ]),
+      },
+    }]
+
+    if (!compact) {
+      // 5 日 / 10 日均线
+      const ma = (arr: number[], n: number) =>
+        arr.map((_, i) => i < n - 1 ? null : arr.slice(i - n + 1, i + 1).reduce((a, b) => a + b, 0) / n)
+      const ma5 = ma(navs, 5)
+      const ma10 = ma(navs, 10)
+      series.push(
+        {
+          name: 'MA5',
+          type: 'line',
+          data: ma5,
+          smooth: true,
+          showSymbol: false,
+          lineStyle: { width: 1, color: '#f5a623' },
+        },
+        {
+          name: 'MA10',
+          type: 'line',
+          data: ma10,
+          smooth: true,
+          showSymbol: false,
+          lineStyle: { width: 1, color: '#bd93f9' },
+        },
+      )
+    }
 
     return {
       backgroundColor: colors.bgSecondary,
@@ -59,14 +95,19 @@ export default function FundNavChart({ data, height = 400 }: Props) {
           </div>`
         },
       },
-      grid: { left: 60, right: 20, top: 30, bottom: 30 },
-      legend: { data: ['净值', 'MA5', 'MA10'], textStyle: { color: colors.textMuted, fontFamily: fonts.mono, fontSize: 10 }, top: 4 },
+      grid: compact
+        ? { left: 8, right: 8, top: 8, bottom: 8 }
+        : { left: 60, right: 20, top: 30, bottom: 30 },
+      legend: compact
+        ? undefined
+        : { data: ['净值', 'MA5', 'MA10'], textStyle: { color: colors.textMuted, fontFamily: fonts.mono, fontSize: 10 }, top: 4 },
       xAxis: {
         type: 'category' as const,
         data: dates,
-        axisLine: { lineStyle: { color: colors.border } },
+        axisLine: { show: !compact, lineStyle: { color: colors.border } },
         axisTick: { show: false },
         axisLabel: {
+          show: !compact,
           color: colors.textMuted,
           fontSize: 10,
           fontFamily: fonts.mono,
@@ -78,45 +119,19 @@ export default function FundNavChart({ data, height = 400 }: Props) {
         scale: true,
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: colors.border, type: 'dashed' as const } },
+        splitLine: { show: !compact, lineStyle: { color: colors.border, type: 'dashed' as const } },
         axisLabel: {
+          show: !compact,
           color: colors.textMuted,
           fontSize: 10,
           fontFamily: fonts.mono,
           formatter: (v: number) => v.toFixed(4),
         },
       },
-      dataZoom: [{ type: 'inside' as const, start: 0, end: 100 }],
-      series: [{
-        name: '净值',
-        type: 'line',
-        data: navs,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 1.5, color: lineColor },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: areaColorTop },
-            { offset: 1, color: areaColorBottom },
-          ]),
-        },
-      }, {
-        name: 'MA5',
-        type: 'line',
-        data: ma5,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 1, color: '#f5a623' },
-      }, {
-        name: 'MA10',
-        type: 'line',
-        data: ma10,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 1, color: '#bd93f9' },
-      }],
+      dataZoom: compact ? undefined : [{ type: 'inside' as const, start: 0, end: 100 }],
+      series,
     }
-  }, [data])
+  }, [data, compact])
 
   if (!data || data.length === 0) {
     return (
@@ -130,5 +145,5 @@ export default function FundNavChart({ data, height = 400 }: Props) {
     )
   }
 
-  return <ReactECharts option={option} style={{ height }} notMerge />
+  return <ReactECharts option={option} style={{ height, width: '100%' }} notMerge />
 }

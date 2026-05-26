@@ -1,10 +1,75 @@
 """行情服务：桥接 a_stock_db 查询层"""
+import json
+import os
+import time
+from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import List, Optional
-from sqlalchemy import desc, func
+from typing import List, Optional, Set
+from sqlalchemy import desc, func, text
 
-from a_stock_db import StockBasic, StockDaily, StockMinute, StockRealtime, ETFBasic, ETFDaily
+from a_stock_db import StockBasic, StockDaily, StockMinute, StockRealtime, ETFBasic, ETFDaily, StockIndexComponents
 from a_stock_db.database import db
+
+
+# ---------- 指数成分股筛选缓存 ----------
+_INDEX_CACHE_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'index_components_cache.json')
+_index_components_cache: dict = {'codes': set(), 'updated_at': 0}
+
+
+def _load_index_cache_from_file() -> Set[str]:
+    """从本地JSON缓存文件加载成分股代码"""
+    try:
+        with open(_INDEX_CACHE_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return set(data.get('codes', []))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+
+def _save_index_cache_to_file(codes: Set[str]):
+    """保存成分股代码到本地JSON缓存文件"""
+    os.makedirs(os.path.dirname(_INDEX_CACHE_FILE), exist_ok=True)
+    with open(_INDEX_CACHE_FILE, 'w', encoding='utf-8') as f:
+        json.dump({'codes': sorted(list(codes)), 'updated_at': datetime.now().isoformat()}, f)
+
+
+def _get_index_component_codes() -> Set[str]:
+    """获取中证500 + 沪深300 成分股代码（带1小时缓存）"""
+    now = time.time()
+    if _index_components_cache['codes'] and _index_components_cache['updated_at'] > now - 3600:
+        return _index_components_cache['codes']
+
+    index_codes = {'000300', '000905'}  # 沪深300, 中证500
+    codes = set()
+
+    # 1. 先查DB
+    session = db.get_session()
+    try:
+        rows = session.query(StockIndexComponents.股票代码).filter(
+            StockIndexComponents.指数代码.in_(index_codes)
+        ).distinct().all()
+        codes = {r[0] for r in rows}
+    finally:
+        session.close()
+
+    # 2. DB为空时，查本地JSON缓存
+    if not codes:
+        codes = _load_index_cache_from_file()
+
+    # 3. 本地缓存也为空时，从akshare获取并保存
+    if not codes:
+        try:
+            import akshare as ak
+            for symbol in index_codes:
+                df = ak.index_stock_cons_weight_csindex(symbol=symbol)
+                codes.update(str(c).zfill(6) for c in df['成分券代码'].tolist())
+            _save_index_cache_to_file(codes)
+        except Exception:
+            pass
+
+    _index_components_cache['codes'] = codes
+    _index_components_cache['updated_at'] = now
+    return codes
 
 
 def search_stocks(keyword: str, limit: int = 20) -> List[dict]:
@@ -207,6 +272,148 @@ _SORT_MAP = {
 }
 
 
+# ---------- 唐奇安通道筛选 ----------
+def get_donchian_breakout_codes(target_date: datetime, filter_type: str) -> Set[str]:
+    """返回符合唐奇安通道突破条件的股票代码集合
+
+    filter_type:
+      breakout_3d    — 近3个交易日收盘价突破20日Donchian上轨
+      first_breakout — 在 breakout_3d 基础上，之前有过破位(跌破下轨)且本次是破位后首次突破
+    """
+    session = db.get_session()
+    try:
+        target_str = target_date.strftime('%Y-%m-%d')
+        # 近3个交易日（用 -5 日历天覆盖周末/节假日）
+        start_3d = (target_date - timedelta(days=5)).strftime('%Y-%m-%d')
+
+        # 第一步：获取近3天数据 + 唐奇安上/下轨
+        # 使用相关子查询，利用 uq_code_date 唯一索引加速
+        sql_3d = text("""
+            SELECT t.code, date(t.日期) as dt, t.收盘 as close,
+              (SELECT MAX(sd.最高) FROM stock_daily sd
+               WHERE sd.code = t.code AND sd.日期 < t.日期
+                 AND sd.日期 >= date(t.日期, '-40 days')) as upper_band,
+              (SELECT MIN(sd.最低) FROM stock_daily sd
+               WHERE sd.code = t.code AND sd.日期 < t.日期
+                 AND sd.日期 >= date(t.日期, '-40 days')) as lower_band
+            FROM stock_daily t
+            WHERE t.日期 >= :start_3d AND t.日期 <= :target_date
+        """)
+        rows = session.execute(sql_3d, {'start_3d': start_3d, 'target_date': target_str}).fetchall()
+
+        # 按股票分组，找近3天突破的代码
+        stock_data = defaultdict(list)
+        for r in rows:
+            if r.upper_band is not None:
+                stock_data[r.code].append({
+                    'date': r.dt,
+                    'close': r.close,
+                    'upper': r.upper_band,
+                    'lower': r.lower_band,
+                })
+
+        # 获取最近3个交易日（从所有数据中取最大的3个日期）
+        all_dates = sorted({r.dt for r in rows}, reverse=True)
+        recent_3_dates = set(all_dates[:3])
+
+        breakout_codes = set()
+        for code, bars in stock_data.items():
+            for bar in bars:
+                if bar['date'] in recent_3_dates and bar['close'] > bar['upper']:
+                    breakout_codes.add(code)
+                    break
+
+        if filter_type == 'breakout_3d':
+            return breakout_codes
+
+        # 第二步：first_breakout — 对突破股票回查60天历史
+        if not breakout_codes:
+            return set()
+
+        lookback_60 = (target_date - timedelta(days=90)).strftime('%Y-%m-%d')
+        sql_60 = text("""
+            SELECT t.code, date(t.日期) as dt, t.收盘 as close,
+              (SELECT MAX(sd.最高) FROM stock_daily sd
+               WHERE sd.code = t.code AND sd.日期 < t.日期
+                 AND sd.日期 >= date(t.日期, '-40 days')) as upper_band,
+              (SELECT MIN(sd.最低) FROM stock_daily sd
+               WHERE sd.code = t.code AND sd.日期 < t.日期
+                 AND sd.日期 >= date(t.日期, '-40 days')) as lower_band
+            FROM stock_daily t
+            WHERE t.code IN :codes
+              AND t.日期 >= :lookback AND t.日期 <= :target_date
+            ORDER BY t.code, t.日期
+        """)
+        # SQLite 不支持 tuple IN，用逗号分隔的临时表方式
+        code_list = list(breakout_codes)
+        placeholders = ','.join(f':c{i}' for i in range(len(code_list)))
+        params = {f'c{i}': c for i, c in enumerate(code_list)}
+        params['lookback'] = lookback_60
+        params['target_date'] = target_str
+
+        sql_60_final = text(f"""
+            SELECT t.code, date(t.日期) as dt, t.收盘 as close,
+              (SELECT MAX(sd.最高) FROM stock_daily sd
+               WHERE sd.code = t.code AND sd.日期 < t.日期
+                 AND sd.日期 >= date(t.日期, '-40 days')) as upper_band,
+              (SELECT MIN(sd.最低) FROM stock_daily sd
+               WHERE sd.code = t.code AND sd.日期 < t.日期
+                 AND sd.日期 >= date(t.日期, '-40 days')) as lower_band
+            FROM stock_daily t
+            WHERE t.code IN ({placeholders})
+              AND t.日期 >= :lookback AND t.日期 <= :target_date
+            ORDER BY t.code, t.日期
+        """)
+        rows_60 = session.execute(sql_60_final, params).fetchall()
+
+        # 按股票分组
+        history = defaultdict(list)
+        for r in rows_60:
+            if r.upper_band is not None:
+                history[r.code].append({
+                    'date': r.dt,
+                    'close': r.close,
+                    'upper': r.upper_band,
+                    'lower': r.lower_band,
+                })
+
+        # 对每个突破股票，检查破位后首次突破条件
+        result = set()
+        for code in breakout_codes:
+            bars = history.get(code, [])
+            if len(bars) < 2:
+                continue
+
+            # 找最近3天中的第一个突破日期
+            first_breakout_idx = None
+            for i in range(len(bars) - 1, -1, -1):
+                if bars[i]['date'] in recent_3_dates and bars[i]['close'] > bars[i]['upper']:
+                    first_breakout_idx = i
+
+            if first_breakout_idx is None:
+                continue
+
+            # 从突破日往前找：必须先遇到破位，且中间没有突破
+            found_breakdown = False
+            for i in range(first_breakout_idx - 1, -1, -1):
+                bar = bars[i]
+                if bar['close'] > bar['upper']:
+                    # 中间有突破 → 不是首次突破
+                    found_breakdown = False
+                    break
+                if bar['lower'] is not None and bar['close'] < bar['lower']:
+                    # 找到破位
+                    found_breakdown = True
+                    break
+
+            if found_breakdown:
+                result.add(code)
+
+        return result
+    finally:
+        session.close()
+
+
 def get_stock_list(
     date: Optional[str] = None,
     search: Optional[str] = None,
@@ -214,8 +421,10 @@ def get_stock_list(
     sort_order: str = "desc",
     page: int = 1,
     page_size: int = 50,
+    donchian_filter: Optional[str] = None,
+    index_filter: Optional[str] = None,
 ) -> dict:
-    """获取股票列表（支持搜索、排序、分页）"""
+    """获取股票列表（支持搜索、排序、分页、唐奇安通道筛选、指数成分股筛选）"""
     session = db.get_session()
     try:
         # 日期：默认取数据库最新交易日
@@ -225,12 +434,34 @@ def get_stock_list(
             latest = session.query(func.max(StockDaily.日期)).scalar()
             target_date = latest or datetime.now()
 
+        # 唐奇安通道筛选：获取符合条件的股票代码集合
+        donchian_codes = None
+        if donchian_filter and donchian_filter != 'all':
+            donchian_codes = get_donchian_breakout_codes(target_date, donchian_filter)
+            if not donchian_codes:
+                return {"data": [], "total": 0, "page": page, "page_size": page_size}
+
+        # 指数成分股筛选
+        index_codes = None
+        if index_filter and index_filter == 'csi500_hs300':
+            index_codes = _get_index_component_codes()
+            if not index_codes:
+                return {"data": [], "total": 0, "page": page, "page_size": page_size}
+
         # 基础查询：StockDaily JOIN StockBasic
         query = (
             session.query(StockDaily, StockBasic)
             .join(StockBasic, StockDaily.code == StockBasic.code)
             .filter(StockDaily.日期 == target_date)
         )
+
+        # 唐奇安通道代码过滤
+        if donchian_codes is not None:
+            query = query.filter(StockDaily.code.in_(donchian_codes))
+
+        # 指数成分股代码过滤
+        if index_codes is not None:
+            query = query.filter(StockDaily.code.in_(index_codes))
 
         # 搜索：代码或名称模糊匹配
         if search:

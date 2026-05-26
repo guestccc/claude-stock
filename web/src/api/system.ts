@@ -9,6 +9,8 @@ export interface TaskRecord {
   finished_at: number | null
   message: string
   error: string | null
+  progress: number | null
+  log_lines: string[]
 }
 
 export interface SchedulerStatus {
@@ -48,5 +50,11 @@ export async function triggerTask(
   params?: Record<string, any>
 ): Promise<TaskRecord & { error?: string; message?: string }> {
   const { data } = await client.post(`/system/tasks/${task}`, null, { params })
+  return data
+}
+
+/** 停止任务 */
+export async function stopTask(task: string): Promise<{ ok: boolean; message: string }> {
+  const { data } = await client.post(`/system/tasks/${task}/stop`)
   return data
 }

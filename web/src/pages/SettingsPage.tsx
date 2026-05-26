@@ -5,6 +5,7 @@ import {
   getSchedulerStatus,
   getTasks,
   triggerTask,
+  stopTask,
   type TaskRecord,
   type SchedulerStatus,
   type SystemStatus,
@@ -34,6 +35,7 @@ const taskGroups = [
     items: [
       { key: 'minute-cleanup', label: '清理分时', desc: '删除过期分时数据', taskId: 'minute_cleanup' },
       { key: 'daily-clean', label: '清洗日线', desc: '补全涨跌幅/振幅等字段', taskId: 'daily_clean' },
+      { key: 'exright-fix', label: '修复除权', desc: '扫描并修复前复权数据不一致', taskId: 'exright_fix' },
     ],
   },
 ]
@@ -242,6 +244,16 @@ export default function SettingsPage() {
     }
   }
 
+  const handleStop = async (taskKey: string, name: string) => {
+    try {
+      await stopTask(taskKey)
+      showMsg('success', `已停止: ${name}`)
+      await loadTasks()
+    } catch (e) {
+      showMsg('error', '停止失败: ' + (e as Error).message)
+    }
+  }
+
   const renderStatusText = (taskId: string) => {
     const t = tasks[taskId]
     if (!t) return '空闲'
@@ -311,27 +323,94 @@ export default function SettingsPage() {
               <div style={S.cardTitle}>{group.title}</div>
               {group.items.map(item => {
                 const isRunning = tasks[item.taskId]?.status === 'running'
+                const task = tasks[item.taskId]
+                const showProgress = isRunning && task?.progress != null
                 return (
-                  <div key={item.key} style={S.taskRow}>
-                    <div style={S.taskInfo}>
-                      <span style={S.taskLabel}>{item.label}</span>
-                      <span style={S.taskDesc}>{item.desc}</span>
+                  <div key={item.key}>
+                    <div style={S.taskRow}>
+                      <div style={S.taskInfo}>
+                        <span style={S.taskLabel}>{item.label}</span>
+                        <span style={S.taskDesc}>{item.desc}</span>
+                      </div>
+                      <div style={S.taskRight}>
+                        <span style={S.statusBadge(task?.status || '')}>
+                          {renderStatusText(item.taskId)}
+                        </span>
+                        <span style={{ fontFamily: fonts.mono, fontSize: 10, color: colors.textMuted }}>
+                          {formatTime(task?.finished_at || task?.started_at)}
+                        </span>
+                        {isRunning ? (
+                          <button
+                            style={{
+                              ...S.btn(false),
+                              background: colors.bgHover,
+                              color: colors.rise,
+                              border: `1px solid ${colors.rise}44`,
+                            }}
+                            onClick={() => handleStop(item.key, item.label)}
+                          >
+                            停止
+                          </button>
+                        ) : (
+                          <button
+                            style={S.btn(false)}
+                            onClick={() => handleTrigger(item.key, item.label)}
+                          >
+                            执行
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div style={S.taskRight}>
-                      <span style={S.statusBadge(tasks[item.taskId]?.status || '')}>
-                        {renderStatusText(item.taskId)}
-                      </span>
-                      <span style={{ fontFamily: fonts.mono, fontSize: 10, color: colors.textMuted }}>
-                        {formatTime(tasks[item.taskId]?.finished_at || tasks[item.taskId]?.started_at)}
-                      </span>
-                      <button
-                        style={S.btn(isRunning)}
-                        onClick={() => handleTrigger(item.key, item.label)}
-                        disabled={isRunning}
-                      >
-                        {isRunning ? '运行中' : '执行'}
-                      </button>
-                    </div>
+                    {/* 进度条 + 日志 */}
+                    {showProgress && (
+                      <div style={{ padding: '0 0 8px 0' }}>
+                        <div style={{
+                          width: '100%',
+                          height: 4,
+                          background: colors.border,
+                          borderRadius: 2,
+                          overflow: 'hidden',
+                          marginBottom: 6,
+                        }}>
+                          <div style={{
+                            width: `${Math.round((task.progress ?? 0) * 100)}%`,
+                            height: '100%',
+                            background: colors.accent,
+                            borderRadius: 2,
+                            transition: 'width 0.3s',
+                          }} />
+                        </div>
+                        <div style={{
+                          fontSize: 10,
+                          fontFamily: fonts.mono,
+                          color: colors.textSecondary,
+                          marginBottom: 2,
+                        }}>
+                          {Math.round((task.progress ?? 0) * 100)}% {task.message}
+                        </div>
+                        {task.log_lines && task.log_lines.length > 0 && (
+                          <div style={{
+                            maxHeight: 80,
+                            overflow: 'auto',
+                            background: colors.bg,
+                            borderRadius: 4,
+                            padding: '4px 8px',
+                            fontSize: 10,
+                            fontFamily: fonts.mono,
+                            color: colors.textMuted,
+                            lineHeight: 1.6,
+                          }}>
+                            {task.log_lines.slice().reverse().map((line, idx) => (
+                              <div key={idx} style={{
+                                color: line.includes('⚠️') ? colors.fall : colors.textMuted,
+                              }}>
+                                {line}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}

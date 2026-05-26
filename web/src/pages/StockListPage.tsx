@@ -8,6 +8,20 @@ import StockDetailPanel from '../components/stock/StockDetailPanel'
 const PAGE_SIZE = 50
 
 type SortField = 'pct_change' | 'close' | 'volume' | 'turnover'
+type DonchianFilter = 'all' | 'breakout_3d' | 'first_breakout'
+
+type IndexFilter = 'all' | 'csi500_hs300'
+
+const DONCHIAN_OPTIONS: { value: DonchianFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'breakout_3d', label: '近3天唐奇安突破' },
+  { value: 'first_breakout', label: '破位后首次突破' },
+]
+
+const INDEX_OPTIONS: { value: IndexFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'csi500_hs300', label: '中证500+沪深300' },
+]
 
 const COLUMNS: {
   key: keyof StockListItem | 'index'
@@ -50,6 +64,8 @@ export default function StockListPage() {
   const [sortBy, setSortBy] = useState<SortField>('pct_change')
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
   const [page, setPage] = useState(1)
+  const [donchianFilter, setDonchianFilter] = useState<DonchianFilter>('all')
+  const [indexFilter, setIndexFilter] = useState<IndexFilter>('all')
 
   // 数据状态
   const [stocks, setStocks] = useState<StockListItem[]>([])
@@ -67,6 +83,8 @@ export default function StockListPage() {
         sort_order: sortOrder,
         page,
         page_size: PAGE_SIZE,
+        donchian_filter: donchianFilter !== 'all' ? donchianFilter : undefined,
+        index_filter: indexFilter !== 'all' ? indexFilter : undefined,
       })
       setStocks(res.data)
       setTotal(res.total)
@@ -80,7 +98,7 @@ export default function StockListPage() {
     } finally {
       setLoading(false)
     }
-  }, [date, search, sortBy, sortOrder, page])
+  }, [date, search, sortBy, sortOrder, page, donchianFilter, indexFilter])
 
   useEffect(() => {
     fetchData()
@@ -125,6 +143,24 @@ export default function StockListPage() {
       }}>
         {/* 筛选栏 */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+          <select
+            value={donchianFilter}
+            onChange={(e) => { setDonchianFilter(e.target.value as DonchianFilter); setPage(1) }}
+            style={styles.input}
+          >
+            {DONCHIAN_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <select
+            value={indexFilter}
+            onChange={(e) => { setIndexFilter(e.target.value as IndexFilter); setPage(1) }}
+            style={styles.input}
+          >
+            {INDEX_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
           <input
             type="date"
             value={date}

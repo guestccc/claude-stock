@@ -20,7 +20,9 @@ import {
   searchFund,
   type FundItem,
   type FundSearchItem,
+  type FundNavPoint,
 } from '../api/fund'
+import FundNavChart from '../components/charts/FundNavChart'
 import { colors, fonts, changeColor, changeSign } from '../theme/tokens'
 import { useAppSettings } from '../store/appSettings'
 
@@ -145,10 +147,17 @@ const S = {
     background: colors.bgSecondary,
     borderRadius: 8,
     padding: 16,
-    marginBottom: 12,
     display: 'flex',
-    gap: 16,
+    gap: 12,
     alignItems: 'flex-start',
+    flexWrap: 'wrap' as const,
+    height: '100%',
+    boxSizing: 'border-box' as const,
+  },
+  cardGrid: {
+    display: 'grid' as const,
+    gap: 12,
+    gridTemplateColumns: 'repeat(3, 1fr)',
   },
   cardLeft: { flex: 1, minWidth: 0 },
   cardRight: { display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-end', gap: 4 },
@@ -336,6 +345,7 @@ export default function FundPage() {
   const { fundCacheMinutes, setFundCacheMinutes } = useAppSettings()
   const [refreshing, setRefreshing] = useState(false)
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card')
+  const [cardColumns, setCardColumns] = useState<number>(3)
 
   const showMsg = (type: 'success' | 'error', text: string) => {
     setMsg({ type, text })
@@ -462,6 +472,19 @@ export default function FundPage() {
             value={viewMode}
             onChange={v => setViewMode(v as 'card' | 'table')}
           />
+          {viewMode === 'card' && (
+            <Segmented
+              size="small"
+              options={[
+                { label: '1列', value: 1 },
+                { label: '2列', value: 2 },
+                { label: '3列', value: 3 },
+                { label: '4列', value: 4 },
+              ]}
+              value={cardColumns}
+              onChange={v => setCardColumns(v as number)}
+            />
+          )}
           <label style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.textMuted, display: 'flex', alignItems: 'center', gap: 4 }}>
             缓存
             <select style={S.input}
@@ -702,7 +725,8 @@ export default function FundPage() {
         })()
       ) : (
         /* ---- 卡片视图（原有逻辑） ---- */
-        funds.filter(f => !filterTag || f.tags.includes(filterTag)).map(fund => (
+        <div style={{ ...S.cardGrid, gridTemplateColumns: `repeat(${cardColumns}, 1fr)` }}>
+        {funds.filter(f => !filterTag || f.tags.includes(filterTag)).map(fund => (
           <div key={fund.code} style={{ ...S.card, cursor: 'pointer' }}
             onClick={() => navigate(`/fund/${fund.code}`)}
           >
@@ -761,28 +785,6 @@ export default function FundPage() {
                 )}
               </div>
 
-              {fund.history && fund.history.length > 0 && (
-                <table style={S.table}>
-                  <thead>
-                    <tr>
-                      <th style={S.th}>日期</th>
-                      <th style={{ ...S.th, ...S.tdRight }}>单位净值</th>
-                      <th style={{ ...S.th, ...S.tdRight }}>日增长率</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fund.history.slice(-5).map((h, i) => (
-                      <tr key={i}>
-                        <td style={S.td}>{h.date}</td>
-                        <td style={{ ...S.td, ...S.tdRight }}>{h.nav?.toFixed(4) || '-'}</td>
-                        <td style={{ ...S.td, ...S.tdRight, color: changeColor(h.pct_change) }}>
-                          {h.pct_change != null ? (h.pct_change >= 0 ? '+' : '') + h.pct_change.toFixed(2) + '%' : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
             </div>
 
             <div style={S.cardRight}>
@@ -811,8 +813,25 @@ export default function FundPage() {
                 移除
               </button>
             </div>
+
+            {fund.history && fund.history.length > 0 && (
+              <div style={{ width: '100%', marginTop: 4 }}>
+                {(() => {
+                  const chartData: FundNavPoint[] = fund.history
+                    .filter((h): h is { date: string; nav: number; pct_change: number | null } => h.nav != null)
+                  return (
+                    <FundNavChart
+                      data={chartData}
+                      height={120}
+                      compact
+                    />
+                  )
+                })()}
+              </div>
+            )}
           </div>
-        ))
+        ))}
+        </div>
       )}
     </div>
   )
