@@ -11,6 +11,7 @@ import FundDetailPage from './pages/FundDetailPage'
 import ETFListPage from './pages/ETFListPage'
 import BoardPage from './pages/BoardPage'
 import BoardConceptDetailPage from './pages/BoardConceptDetailPage'
+import HeatmapPage from './pages/HeatmapPage'
 import SettingsPage from './pages/SettingsPage'
 
 const antdTheme = {
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="/etf/:code" element={<ETFListPage />} />
             <Route path="/board" element={<BoardPage />} />
             <Route path="/board/concept/:name" element={<BoardConceptDetailPage />} />
+            <Route path="/heatmap" element={<HeatmapPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>
