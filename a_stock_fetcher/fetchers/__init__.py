@@ -3,7 +3,7 @@
 依赖: a_stock_db (数据库层)
 """
 from .basic import fetch_stock_basic, get_stock_type, is_enabled
-from .daily import fetch_stock_daily, fetch_all_stocks_daily, fetch_stock_daily_incremental, fetch_all_stocks_daily_incremental, fetch_stock_daily_full_history
+from .daily import fetch_stock_daily, fetch_all_stocks_daily, fetch_stock_daily_incremental, fetch_all_stocks_daily_incremental, fetch_stock_daily_full_history, refetch_after_ex_rights, detect_and_fix_ex_rights
 from .minute import fetch_stock_minute, fetch_all_stocks_minute, cleanup_old_minute_data
 from .financial import fetch_stock_financial
 from .concept import fetch_concept, fetch_industry, fetch_all_boards
@@ -50,4 +50,7 @@ __all__ = [
     'fetch_all_etf_daily',
     'fetch_etf_daily_full_history',
     'fetch_etf_realtime_ths',
+    # 除权修复
+    'refetch_after_ex_rights',
+    'detect_and_fix_ex_rights',
 ]

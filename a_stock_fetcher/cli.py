@@ -25,6 +25,9 @@ from a_stock_fetcher import (
     fetch_etf_basic,
     fetch_all_etf_daily,
     fetch_etf_daily_full_history,
+    # 除权修复
+    refetch_after_ex_rights,
+    detect_and_fix_ex_rights,
 )
 from server.services.board_service import sync_all_concept_kline
 
@@ -46,6 +49,8 @@ HELP_TEXT = """
   boards                 - 更新概念/行业板块
   cleanup                - 清理过期分时数据
   clean-daily [N]       - 清洗日线数据：补全涨跌幅/涨跌额/振幅
+  refetch <CODE>         - 强制重拉单只股票近2年前复权数据（修复除权）
+  fix-ex-rights          - 全量扫描除权不一致并自动修复
   fund-add <CODE>         - 添加自选基金并获取实时估值
   fund-update            - 更新所有自选基金实时估值
   fund-remove <CODE>     - 移除自选基金
@@ -236,7 +241,25 @@ def main():
         cleanup_old_minute_data()
 
     elif cmd == "clean-daily":
-        clean_daily_data(limit=limit)
+        clean_daily_data(limit=limit, codes=codes if codes else None)
+
+    elif cmd == "refetch":
+        if not args or args[0].startswith('--'):
+            print("用法: python3 -m a_stock_fetcher.cli refetch <股票代码>")
+            print("示例: python3 -m a_stock_fetcher.cli refetch 603031")
+            return
+        code = args[0].strip()
+        print(f"=" * 50)
+        print(f"强制重拉 {code} 近2年前复权数据...")
+        print(f"=" * 50)
+        count = refetch_after_ex_rights(code)
+        print(f"完成: 重写 {count} 条记录")
+
+    elif cmd == "fix-ex-rights":
+        print("=" * 50)
+        print("全量扫描除权不一致并自动修复")
+        print("=" * 50)
+        detect_and_fix_ex_rights()
 
     elif cmd == "fund-add":
         if not args:

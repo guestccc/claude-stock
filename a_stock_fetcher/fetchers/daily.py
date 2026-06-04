@@ -552,7 +552,7 @@ if __name__ == '__main__':
 
 # ---------- 除权修复 ----------
 
-def _refetch_after_ex_rights(code: str, task_id: str = None) -> int:
+def refetch_after_ex_rights(code: str, task_id: str = None) -> int:
     """检测到除权后，重拉该股票近2年前复权数据并覆盖写入
 
     从2年缩短到2年（足够覆盖绝大多数除权场景），避免5年20批太慢导致卡住。
@@ -683,7 +683,7 @@ def detect_and_fix_ex_rights(progress_cb=None, task_id: str = None) -> dict:
                         break
 
             if mismatch:
-                count = _refetch_after_ex_rights(code, task_id=task_id)
+                count = refetch_after_ex_rights(code, task_id=task_id)
                 fixed += 1
                 msg = f"[{i+1}/{total}] {code} {name or ''} ⚠️ 除权修复，重写{count}条"
                 print(msg)

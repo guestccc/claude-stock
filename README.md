@@ -69,7 +69,17 @@ python3 -m a_stock_fetcher.cli [命令]
 | `financial [N]` | 更新财务数据，默认 100 条 |
 | `boards` | 更新概念/行业板块 |
 | `cleanup` | 清理过期分时数据 |
-| `clean-daily [N]` | 清洗日线数据：补全涨跌幅/涨跌额/振幅 |
+| `clean-daily [N] [--codes ...]` | 清洗日线数据：补全涨跌幅/涨跌额/振幅，可指定股票 |
+| `refetch <CODE>` | 强制重拉单只股票近2年前复权数据（修复除权） |
+| `fix-ex-rights` | 全量扫描除权不一致并自动修复 |
+| `fund-add <CODE>` | 添加自选基金（自动获取基本信息+估值） |
+| `fund-update` | 更新所有自选基金实时估值 |
+| `fund-remove <CODE>` | 移除自选基金 |
+| `fund-list` | 查看自选基金列表 |
+| `etf-basic` | 同步 ETF 基础信息（全量刷新） |
+| `etf-daily [N]` | 批量获取 ETF 日线数据（增量更新） |
+| `etf-daily-full <CODE>` | 获取单只 ETF 全部历史日线数据 |
+| `board-kline-full` | 同步所有概念板块历史K线（首次运行较慢） |
 | `rules/rules2/rules3` | 查看配置规则 |
 | `scheduler` | 启动定时任务调度器 |
 | `status` | 查看调度器状态 |

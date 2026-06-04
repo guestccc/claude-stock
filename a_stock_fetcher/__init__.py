@@ -31,6 +31,9 @@ from .fetchers import (
     fetch_all_etf_daily,
     fetch_etf_daily_full_history,
     fetch_etf_realtime_ths,
+    # 除权修复
+    refetch_after_ex_rights,
+    detect_and_fix_ex_rights,
 )
 from .scheduler import start_scheduler, run_scheduler, get_scheduler
 
@@ -75,4 +78,7 @@ __all__ = [
     'fetch_all_etf_daily',
     'fetch_etf_daily_full_history',
     'fetch_etf_realtime_ths',
+    # 除权修复
+    'refetch_after_ex_rights',
+    'detect_and_fix_ex_rights',
 ]

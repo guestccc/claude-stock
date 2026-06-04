@@ -55,6 +55,7 @@ interface Props {
 export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, isLoadingMore, hasMore, extraMarkPoints }: Props) {
   const [activeSubs, setActiveSubs] = useState<SubType[]>(['VOL', 'MACD', 'KDJ']);
   const [chanlunActive, setChanlunActive] = useState(false);
+  const [presetMode, setPresetMode] = useState<'donchian' | 'default' | null>('donchian');
 
   // ---------- 分页加载：refs ----------
   const chartRef = useRef<ReactECharts>(null);
@@ -121,6 +122,26 @@ export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, is
     () => overlayToSeries(overlays),
     [overlays],
   );
+
+  // 预设模式 → legend selected 映射
+  const presetSelected = useMemo(() => {
+    const base: Record<string, boolean> = {
+      'K线': true,
+      '唐奇安通道': false,
+      '布林带': false,
+      '均线': false,
+      '突破': false,
+      '破位': false,
+    };
+    switch (presetMode) {
+      case 'donchian':
+        return { ...base, '唐奇安通道': true, '布林带': true, '突破': true, '破位': true };
+      case 'default':
+        return { ...base, '布林带': true, '均线': true };
+      default:
+        return base;
+    }
+  }, [presetMode]);
 
   // 缠论计算（条件计算，关闭时不消耗性能）
   const chanlunResult = useMemo(
@@ -384,14 +405,7 @@ export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, is
       textStyle: { color: '#7a8099', fontSize: 10 },
       itemWidth: 14,
       itemHeight: 8,
-      selected: {
-        'K线': true,
-        '唐奇安通道': false,
-        '布林带': false,
-        '均线': false,
-        '突破': false,
-        '破位': false,
-      },
+      selected: presetSelected,
     },
     graphic: buildSubLabels(activeSubs, subCount, mainH),
     grid,
@@ -463,6 +477,34 @@ export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, is
             fontFamily: 'inherit',
           }}
         >缠论</button>
+        <button
+          onClick={() => setPresetMode(presetMode === 'donchian' ? null : 'donchian')}
+          style={{
+            padding: '2px 10px',
+            fontSize: 10,
+            border: '1px solid',
+            borderColor: presetMode === 'donchian' ? '#f5a742' : '#3a3a3a',
+            borderRadius: 4,
+            background: presetMode === 'donchian' ? '#1a1a1a' : 'transparent',
+            color: presetMode === 'donchian' ? '#f5a742' : '#3a3a3a',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >唐奇安</button>
+        <button
+          onClick={() => setPresetMode(presetMode === 'default' ? null : 'default')}
+          style={{
+            padding: '2px 10px',
+            fontSize: 10,
+            border: '1px solid',
+            borderColor: presetMode === 'default' ? '#42c6f5' : '#3a3a3a',
+            borderRadius: 4,
+            background: presetMode === 'default' ? '#1a1a1a' : 'transparent',
+            color: presetMode === 'default' ? '#42c6f5' : '#3a3a3a',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >默认</button>
       </div>
       {isLoadingMore && hasMore && (
         <div style={{ position: 'absolute', left: 60, top: 8, color: '#f5a742', fontSize: 11, zIndex: 10 }}>

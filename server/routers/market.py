@@ -78,7 +78,7 @@ async def get_stock_list(
     sort_order: str = Query("desc", description="排序方向: asc/desc"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(50, ge=1, le=200, description="每页条数"),
-    donchian_filter: Optional[str] = Query(None, description="唐奇安筛选: breakout_3d / first_breakout"),
+    donchian_filter: Optional[str] = Query(None, description="唐奇安筛选: breakout_3d / first_breakout / boll_breakout_3d / first_boll_breakout"),
     index_filter: Optional[str] = Query(None, description="指数筛选: csi500_hs300"),
 ):
     """获取股票列表"""

@@ -8,14 +8,16 @@ import StockDetailPanel from '../components/stock/StockDetailPanel'
 const PAGE_SIZE = 50
 
 type SortField = 'pct_change' | 'close' | 'volume' | 'turnover'
-type DonchianFilter = 'all' | 'breakout_3d' | 'first_breakout'
+type DonchianFilter = 'all' | 'breakout_3d' | 'first_breakout' | 'boll_breakout_3d' | 'first_boll_breakout'
 
 type IndexFilter = 'all' | 'csi500_hs300'
 
 const DONCHIAN_OPTIONS: { value: DonchianFilter; label: string }[] = [
   { value: 'all', label: '全部' },
   { value: 'breakout_3d', label: '近3天唐奇安突破' },
+  { value: 'boll_breakout_3d', label: '近3天唐奇安+布林突破' },
   { value: 'first_breakout', label: '破位后首次突破' },
+  { value: 'first_boll_breakout', label: '破位后首次双突破' },
 ]
 
 const INDEX_OPTIONS: { value: IndexFilter; label: string }[] = [
@@ -142,7 +144,7 @@ export default function StockListPage() {
         borderRight: selectedCode ? `1px solid ${colors.border}` : 'none',
       }}>
         {/* 筛选栏 */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
           <select
             value={donchianFilter}
             onChange={(e) => { setDonchianFilter(e.target.value as DonchianFilter); setPage(1) }}

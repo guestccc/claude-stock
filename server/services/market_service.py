@@ -273,12 +273,51 @@ _SORT_MAP = {
 
 
 # ---------- 唐奇安通道筛选 ----------
+def _filter_boll_breakout(session, codes: Set[str], target_date: datetime, recent_3_dates: set) -> Set[str]:
+    """从唐奇安突破股票中，筛选近3天同时突破布林上轨(MA20+2*STD20)的代码"""
+    if not codes:
+        return set()
+
+    target_str = target_date.strftime('%Y-%m-%d')
+    start_3d = (target_date - timedelta(days=5)).strftime('%Y-%m-%d')
+
+    code_list = list(codes)
+    placeholders = ','.join(f':c{i}' for i in range(len(code_list)))
+    params = {f'c{i}': c for i, c in enumerate(code_list)}
+    params['start_3d'] = start_3d
+    params['target_date'] = target_str
+
+    # 布林上轨 = MA(20) + 2 * STD(20)，利用 VAR = E[X²] - (E[X])²
+    sql_boll = text(f"""
+        SELECT t.code, date(t.日期) as dt, t.收盘 as close,
+          (SELECT ma + 2.0 * CASE WHEN var > 0 THEN SQRT(var) ELSE 0 END
+           FROM (SELECT AVG(sd.收盘) as ma,
+                        AVG(sd.收盘 * sd.收盘) - AVG(sd.收盘) * AVG(sd.收盘) as var
+                 FROM stock_daily sd
+                 WHERE sd.code = t.code AND sd.日期 < t.日期
+                   AND sd.日期 >= date(t.日期, '-40 days'))) as boll_upper
+        FROM stock_daily t
+        WHERE t.code IN ({placeholders})
+          AND t.日期 >= :start_3d AND t.日期 <= :target_date
+    """)
+    rows = session.execute(sql_boll, params).fetchall()
+
+    result = set()
+    for r in rows:
+        if r.dt in recent_3_dates and r.boll_upper is not None:
+            if r.close >= r.boll_upper:
+                result.add(r.code)
+    return result
+
+
 def get_donchian_breakout_codes(target_date: datetime, filter_type: str) -> Set[str]:
     """返回符合唐奇安通道突破条件的股票代码集合
 
     filter_type:
-      breakout_3d    — 近3个交易日收盘价突破20日Donchian上轨
-      first_breakout — 在 breakout_3d 基础上，之前有过破位(跌破下轨)且本次是破位后首次突破
+      breakout_3d        — 近3个交易日收盘价突破20日Donchian上轨
+      boll_breakout_3d   — 近3个交易日收盘价同时突破唐奇安上轨+布林上轨
+      first_breakout     — 在 breakout_3d 基础上，之前有过破位(跌破下轨)且本次是破位后首次突破
+      first_boll_breakout — 在 first_breakout 基础上，同时突破布林上轨
     """
     session = db.get_session()
     try:
@@ -326,25 +365,14 @@ def get_donchian_breakout_codes(target_date: datetime, filter_type: str) -> Set[
         if filter_type == 'breakout_3d':
             return breakout_codes
 
+        if filter_type == 'boll_breakout_3d':
+            return _filter_boll_breakout(session, breakout_codes, target_date, recent_3_dates)
+
         # 第二步：first_breakout — 对突破股票回查60天历史
         if not breakout_codes:
             return set()
 
         lookback_60 = (target_date - timedelta(days=90)).strftime('%Y-%m-%d')
-        sql_60 = text("""
-            SELECT t.code, date(t.日期) as dt, t.收盘 as close,
-              (SELECT MAX(sd.最高) FROM stock_daily sd
-               WHERE sd.code = t.code AND sd.日期 < t.日期
-                 AND sd.日期 >= date(t.日期, '-40 days')) as upper_band,
-              (SELECT MIN(sd.最低) FROM stock_daily sd
-               WHERE sd.code = t.code AND sd.日期 < t.日期
-                 AND sd.日期 >= date(t.日期, '-40 days')) as lower_band
-            FROM stock_daily t
-            WHERE t.code IN :codes
-              AND t.日期 >= :lookback AND t.日期 <= :target_date
-            ORDER BY t.code, t.日期
-        """)
-        # SQLite 不支持 tuple IN，用逗号分隔的临时表方式
         code_list = list(breakout_codes)
         placeholders = ','.join(f':c{i}' for i in range(len(code_list)))
         params = {f'c{i}': c for i, c in enumerate(code_list)}
@@ -408,6 +436,12 @@ def get_donchian_breakout_codes(target_date: datetime, filter_type: str) -> Set[
 
             if found_breakdown:
                 result.add(code)
+
+        if filter_type == 'first_breakout':
+            return result
+
+        if filter_type == 'first_boll_breakout':
+            return _filter_boll_breakout(session, result, target_date, recent_3_dates)
 
         return result
     finally:
