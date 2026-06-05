@@ -78,6 +78,45 @@ HELP_TEXT = """
 """
 
 
+# ---------- 命令注册表（统一 CLI 和 run.py 共用） ----------
+# 格式: (分组, 命令名, 描述, 参数模式, 参数提示)
+# 参数模式: None=无参数, "limit"=可选数量N, "code"=必须输入代码, "codes"=逗号分隔代码,
+#           "days"=天数, "date_range"=起止日期
+COMMAND_REGISTRY = [
+    # --- 日线 ---
+    ("日线", "daily-update", "增量更新日线（全部）", None, None),
+    ("日线", "daily-update", "增量更新日线（限制数量）", "limit", "限制数量N（如100）"),
+    ("日线", "daily-update", "增量更新指定股票", "codes", "股票代码（逗号分隔，如600519,000001）"),
+    ("日线", "daily-update", "强制更新近N天", "days", "天数（如10）"),
+    ("日线", "daily-update", "指定日期区间更新", "date_range", "起止日期"),
+    ("日线", "daily", "全量获取日线（慎用）", "limit", "限制数量N（可选）"),
+    ("日线", "daily-full", "获取单只股票全量历史", "code", "股票代码"),
+    ("日线", "daily-full-all", "获取所有股票全量历史", None, None),
+    # --- 分时 ---
+    ("分时", "minute", "更新分时数据（全部）", None, None),
+    ("分时", "minute", "更新分时数据（限制数量）", "limit", "限制数量N"),
+    ("分时", "cleanup", "清理过期分时数据", None, None),
+    # --- 财务 ---
+    ("财务", "financial", "更新财务数据", "limit", "数量（默认100）"),
+    # --- 板块 ---
+    ("板块", "boards", "更新概念/行业板块", None, None),
+    ("板块", "board-kline-full", "同步概念板块历史K线", None, None),
+    # --- ETF ---
+    ("ETF", "etf-basic", "同步ETF基础信息", None, None),
+    ("ETF", "etf-daily", "批量获取ETF日线", "limit", "限制数量N（可选）"),
+    ("ETF", "etf-daily-full", "获取单只ETF全量历史", "code", "ETF代码"),
+    # --- 基金 ---
+    ("基金", "fund-add", "添加自选基金", "code", "基金代码"),
+    ("基金", "fund-update", "更新基金估值", None, None),
+    ("基金", "fund-remove", "移除自选基金", "code", "基金代码"),
+    ("基金", "fund-list", "查看自选基金列表", None, None),
+    # --- 数据维护 ---
+    ("维护", "refetch", "重拉单只股票前复权数据", "code", "股票代码"),
+    ("维护", "fix-ex-rights", "全量除权扫描修复", None, None),
+    ("维护", "clean-daily", "清洗日线数据", "limit", "数量N（可选）"),
+]
+
+
 def parse_codes_arg(args: list) -> list:
     """解析 --codes 参数，返回股票代码列表"""
     codes = []
