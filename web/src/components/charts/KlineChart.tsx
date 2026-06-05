@@ -49,10 +49,12 @@ interface Props {
   hasMore?: boolean;
   /** 额外标记点（如买卖点），直接合并到 K 线 series 的 markPoint */
   extraMarkPoints?: MarkPointOption[];
+  /** 额外标记线（如止盈止损线），直接合并到 K 线 series 的 markLine */
+  extraMarkLines?: object[];
 }
 
 // ---------- 主组件 ----------
-export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, isLoadingMore, hasMore, extraMarkPoints }: Props) {
+export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, isLoadingMore, hasMore, extraMarkPoints, extraMarkLines }: Props) {
   const [activeSubs, setActiveSubs] = useState<SubType[]>(['VOL', 'MACD', 'KDJ']);
   const [chanlunActive, setChanlunActive] = useState(false);
   const [presetMode, setPresetMode] = useState<'donchian' | 'default' | null>('donchian');
@@ -289,14 +291,17 @@ export default function KlineChart({ data, height = CHART_HEIGHT, onLoadMore, is
           data: chanlunPivotAreas,
         }
       : undefined,
-    // 缠论笔折线
-    markLine: chanlunMarkLines.length > 0
+    // 缠论笔折线 + 额外标记线（止盈止损等）
+    markLine: (chanlunMarkLines.length > 0 || (extraMarkLines && extraMarkLines.length > 0))
       ? {
           silent: true,
           symbol: 'none',
           lineStyle: { color: '#f5a623', width: 1.5, type: 'solid' as const },
           label: { show: false },
-          data: chanlunMarkLines,
+          data: [
+            ...chanlunMarkLines,
+            ...(extraMarkLines || []),
+          ],
         }
       : undefined,
   };

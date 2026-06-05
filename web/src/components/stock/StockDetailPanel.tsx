@@ -9,9 +9,11 @@ interface Props {
   code: string
   /** 自选股变更回调，通知父组件刷新 WatchlistPanel */
   onWatchlistChange?: () => void
+  /** 额外标记线（如 AI 设置的止盈止损线） */
+  extraMarkLines?: object[]
 }
 
-export default function StockDetailPanel({ code, onWatchlistChange }: Props) {
+export default function StockDetailPanel({ code, onWatchlistChange, extraMarkLines }: Props) {
   const [name, setName] = useState('')
   const [allData, setAllData] = useState<DailyBar[]>([])
   const [loading, setLoading] = useState(false)
@@ -144,6 +146,7 @@ export default function StockDetailPanel({ code, onWatchlistChange }: Props) {
           onLoadMore={handleLoadMore}
           isLoadingMore={isLoadingMore}
           hasMore={hasMore}
+          extraMarkLines={extraMarkLines}
         />
       ) : (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.textMuted }}>

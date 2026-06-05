@@ -188,6 +188,35 @@ class BoardConceptDaily(Base):
     )
 
 
+class PositionTPSL(Base):
+    """AI 建议的止盈止损记录（用于实际持仓管理）"""
+    __tablename__ = 'position_tp_sl'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment='股票代码')
+
+    # 参考持仓
+    cost_price = Column(Float, nullable=True, comment='参考成本价')
+    quantity = Column(Integer, nullable=True, comment='参考持仓数量')
+
+    # AI 策略结果
+    tp_price = Column(Float, nullable=False, comment='止盈价')
+    sl_price = Column(Float, nullable=False, comment='止损价')
+    strategy = Column(String(50), nullable=True, comment='策略名称')
+    reason = Column(Text, nullable=True, comment='AI分析理由')
+
+    # 状态: active/triggered_tp/triggered_sl/cancelled
+    status = Column(String(10), default='active', comment='状态')
+
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        Index('idx_tp_sl_code', 'code'),
+        Index('idx_tp_sl_status', 'status'),
+    )
+
+
 def init_tables():
     """初始化所有表（启动时调用一次）"""
     Base.metadata.create_all(bind=db.engine)

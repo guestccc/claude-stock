@@ -18,3 +18,10 @@ CORS_ORIGINS = [
 # 服务器配置
 HOST = "::"  # 同时监听 IPv4 和 IPv6
 PORT = 8000
+
+# AI 模型配置（兼容 OpenAI 格式，智谱/Anthropic 代理等）
+# 已预配置为用户的智谱代理，如需更换可修改以下值
+AI_API_KEY = os.getenv("AI_API_KEY", "sk-f65e2e243803ec772634d9c2b5987ad8")
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://aicoding-proxy.myunke.com/cn-cch")
+AI_MODEL = os.getenv("AI_MODEL", "glm-5")
+AI_TIMEOUT = int(os.getenv("AI_TIMEOUT", "60"))

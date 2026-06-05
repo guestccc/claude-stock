@@ -1,10 +1,12 @@
-/** 行情页 — 左侧 K 线详情 + 右侧自选股/持仓 */
+/** 行情页 — 左侧 K 线详情 + 右侧自选股/持仓 + AI 聊天 */
 import { useParams } from 'react-router-dom'
 import { useState, useEffect, useCallback } from 'react'
 import WatchlistPanel from '../components/stock/WatchlistPanel'
 import HoldingsPanel from '../components/stock/HoldingsPanel'
 import StockDetailPanel from '../components/stock/StockDetailPanel'
+import AIChatPanel from '../components/ai-chat/AIChatPanel'
 import { colors, fonts } from '../theme/tokens'
+import type { ChatAction } from '../types/chat'
 
 type RightTab = 'watchlist' | 'holdings'
 
@@ -32,6 +34,26 @@ const S = {
     borderBottom: active ? `2px solid ${colors.accent}` : '2px solid transparent',
     transition: 'color 0.15s, border-color 0.15s',
   }),
+  fab: {
+    position: 'fixed' as const,
+    right: 20,
+    bottom: 20,
+    width: 48,
+    height: 48,
+    borderRadius: '50%',
+    background: colors.accent,
+    border: 'none',
+    color: '#fff',
+    fontSize: 20,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 4px 16px rgba(122,164,245,0.4)',
+    zIndex: 999,
+    fontFamily: fonts.mono,
+    transition: 'transform 0.15s, box-shadow 0.15s',
+  },
 }
 
 export default function MarketPage() {
@@ -40,18 +62,63 @@ export default function MarketPage() {
   const [wlRefresh, setWlRefresh] = useState(0)
   const [activeTab, setActiveTab] = useState<RightTab>('watchlist')
 
+  // AI 聊天面板状态
+  const [chatVisible, setChatVisible] = useState(false)
+
+  // K 线图额外标记线（止盈止损线）
+  const [extraMarkLines, setExtraMarkLines] = useState<object[]>([])
+
   useEffect(() => {
     if (urlCode) setCode(urlCode)
   }, [urlCode])
+
+  // 切换股票时清空标记线
+  useEffect(() => {
+    setExtraMarkLines([])
+  }, [code])
 
   const handleWatchlistChange = useCallback(() => {
     setWlRefresh((k) => k + 1)
   }, [])
 
+  // AI Action 执行后的回调 → 在 K 线图上画线
+  const handleChatAction = useCallback((action: ChatAction, result: any) => {
+    if (action.type === 'set_tp_sl' && result.success) {
+      const d = action.data
+      const lines: object[] = []
+
+      if (d.cost_price) {
+        lines.push({
+          yAxis: d.cost_price,
+          label: { formatter: `成本 ${d.cost_price}`, color: colors.accent, fontSize: 10 },
+          lineStyle: { color: colors.accent, width: 1, type: 'solid' as const },
+        })
+      }
+      lines.push(
+        {
+          yAxis: d.tp_price,
+          label: { formatter: `止盈 ${d.tp_price}`, color: colors.rise, fontSize: 10 },
+          lineStyle: { color: colors.rise, width: 1, type: 'dashed' as const },
+        },
+        {
+          yAxis: d.sl_price,
+          label: { formatter: `止损 ${d.sl_price}`, color: colors.fall, fontSize: 10 },
+          lineStyle: { color: colors.fall, width: 1, type: 'dashed' as const },
+        },
+      )
+
+      setExtraMarkLines((prev) => [...prev, ...lines])
+    }
+  }, [])
+
   return (
     <div style={{ display: 'flex', gap: 16, height: '100%' }}>
       {/* 左侧：指标卡片 + K 线图 */}
-      <StockDetailPanel code={code} onWatchlistChange={handleWatchlistChange} />
+      <StockDetailPanel
+        code={code}
+        onWatchlistChange={handleWatchlistChange}
+        extraMarkLines={extraMarkLines}
+      />
 
       {/* 右侧：自选股 / 持仓 Tab */}
       <div style={{ width: 240, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column' }}>
@@ -68,6 +135,25 @@ export default function MarketPage() {
           <HoldingsPanel />
         )}
       </div>
+
+      {/* AI 聊天浮动按钮（面板未打开时显示） */}
+      {!chatVisible && (
+        <button
+          style={S.fab}
+          onClick={() => setChatVisible(true)}
+          title="AI 分析助手"
+        >
+          AI
+        </button>
+      )}
+
+      {/* AI 聊天面板 */}
+      <AIChatPanel
+        code={code}
+        visible={chatVisible}
+        onClose={() => setChatVisible(false)}
+        onActionExecuted={handleChatAction}
+      />
     </div>
   )
 }
