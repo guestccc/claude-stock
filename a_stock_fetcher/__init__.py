@@ -31,6 +31,7 @@ from .fetchers import (
     fetch_all_etf_daily,
     fetch_etf_daily_full_history,
     fetch_etf_realtime_ths,
+    fix_etf_split_data,
     # 除权修复
     refetch_after_ex_rights,
     detect_and_fix_ex_rights,
@@ -78,6 +79,7 @@ __all__ = [
     'fetch_all_etf_daily',
     'fetch_etf_daily_full_history',
     'fetch_etf_realtime_ths',
+    'fix_etf_split_data',
     # 除权修复
     'refetch_after_ex_rights',
     'detect_and_fix_ex_rights',

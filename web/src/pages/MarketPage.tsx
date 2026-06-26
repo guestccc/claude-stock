@@ -7,6 +7,7 @@ import StockDetailPanel from '../components/stock/StockDetailPanel'
 import AIChatPanel from '../components/ai-chat/AIChatPanel'
 import { colors, fonts } from '../theme/tokens'
 import type { ChatAction } from '../types/chat'
+import { buildMarkLines } from '../components/ai-chat/actions/registry'
 
 type RightTab = 'watchlist' | 'holdings'
 
@@ -81,33 +82,13 @@ export default function MarketPage() {
     setWlRefresh((k) => k + 1)
   }, [])
 
-  // AI Action 执行后的回调 → 在 K 线图上画线
+  // AI Action 执行后的回调 → 通过注册表生成 K 线图标记线
   const handleChatAction = useCallback((action: ChatAction, result: any) => {
-    if (action.type === 'set_tp_sl' && result.success) {
-      const d = action.data
-      const lines: object[] = []
-
-      if (d.cost_price) {
-        lines.push({
-          yAxis: d.cost_price,
-          label: { formatter: `成本 ${d.cost_price}`, color: colors.accent, fontSize: 10 },
-          lineStyle: { color: colors.accent, width: 1, type: 'solid' as const },
-        })
+    if (result.success) {
+      const lines = buildMarkLines(action.type, action.data)
+      if (lines.length > 0) {
+        setExtraMarkLines((prev) => [...prev, ...lines])
       }
-      lines.push(
-        {
-          yAxis: d.tp_price,
-          label: { formatter: `止盈 ${d.tp_price}`, color: colors.rise, fontSize: 10 },
-          lineStyle: { color: colors.rise, width: 1, type: 'dashed' as const },
-        },
-        {
-          yAxis: d.sl_price,
-          label: { formatter: `止损 ${d.sl_price}`, color: colors.fall, fontSize: 10 },
-          lineStyle: { color: colors.fall, width: 1, type: 'dashed' as const },
-        },
-      )
-
-      setExtraMarkLines((prev) => [...prev, ...lines])
     }
   }, [])
 

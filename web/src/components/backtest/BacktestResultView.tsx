@@ -133,34 +133,51 @@ export default function BacktestResultView({ result }: Props) {
       pct_change: null,
     }))
 
-    // 买卖点标记
+    // 买卖点标记：白色圆形 + 彩色文字(买N/卖N)
+    // 按 entry_date 分组：同一笔买入分多次卖出时，序号一致
     const dateIndexMap = new Map(data.map((d, i) => [d.date, i]))
-    const marks: any[] = []
+    const entryGroupMap = new Map<string, number>()
+    let groupSeq = 0
     for (const t of trades) {
+      if (!entryGroupMap.has(t.entry_date)) {
+        groupSeq++
+        entryGroupMap.set(t.entry_date, groupSeq)
+      }
+    }
+    const marks: any[] = []
+    const addedBuySet = new Set<string>() // 避免同一 entry_date 重复打买入标记
+    trades.forEach(t => {
+      const seq = entryGroupMap.get(t.entry_date) || 1
       const isPyramid = t.reason === 'pyramid'
+      const buyKey = `${t.entry_date}_${t.entry_price}`
       const buyIdx = dateIndexMap.get(t.entry_date)
-      if (buyIdx != null) {
+      if (buyIdx != null && !addedBuySet.has(buyKey)) {
+        addedBuySet.add(buyKey)
         marks.push({
           coord: [buyIdx, t.entry_price],
-          value: isPyramid ? '加' : '买',
-          symbol: isPyramid ? PYRAMID_SYMBOL : BUY_SYMBOL,
-          symbolSize: isPyramid ? 22 : 28,
-          symbolOffset: [0, isPyramid ? -22 : -30],
-          itemStyle: { opacity: isPyramid ? 0.7 : 0.5 },
+          value: isPyramid ? `加${seq}` : `买${seq}`,
+          // symbol: isPyramid ? PYRAMID_SYMBOL : BUY_SYMBOL, // 旧 SVG 图标
+          symbol: 'circle',
+          symbolSize: 26,
+          symbolOffset: [0, -20],
+          itemStyle: { color: '#fff', borderColor: isPyramid ? '#2966C1' : '#f1a740', borderWidth: 2 },
+          label: { show: true, formatter: isPyramid ? `加${seq}` : `买${seq}`, color: isPyramid ? '#2966C1' : '#f1a740', fontSize: 10, fontWeight: 600 },
         })
       }
       const sellIdx = dateIndexMap.get(t.exit_date)
       if (sellIdx != null) {
         marks.push({
           coord: [sellIdx, t.exit_price],
-          value: '卖',
-          symbol: SELL_SYMBOL,
-          symbolSize: 28,
-          symbolOffset: [0, 30],
-          itemStyle: { opacity: 0.5 },
+          value: `卖${seq}`,
+          // symbol: SELL_SYMBOL, // 旧 SVG 图标
+          symbol: 'circle',
+          symbolSize: 26,
+          symbolOffset: [0, 20],
+          itemStyle: { color: '#fff', borderColor: '#2966C1', borderWidth: 2 },
+          label: { show: true, formatter: `卖${seq}`, color: '#2966C1', fontSize: 10, fontWeight: 600 },
         })
       }
-    }
+    })
     return { klineData: data, buySellMarks: marks }
   }, [klines, trades])
 
@@ -253,11 +270,9 @@ export default function BacktestResultView({ result }: Props) {
           <div style={S.sectionTitle}>K线图（买卖点标注）</div>
           <KlineChart data={klineData} height={500} extraMarkPoints={buySellMarks} />
           <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 11, color: colors.textMuted, fontFamily: fonts.mono }}>
-            <span><span style={{ color: UP_COLOR }}>▲ 买</span></span>
-            <span><span style={{ color: '#2966C1' }}>⊕ 加仓</span></span>
-            <span><span style={{ color: UP_COLOR }}>▼</span> 卖出（盈）</span>
-            <span><span style={{ color: DOWN_COLOR }}>▼</span> 卖出（亏）</span>
-            <span style={{ marginLeft: 'auto' }}>滚轮缩放</span>
+            <span><span style={{ color: '#f1a740' }}>● 买N</span></span>
+            <span><span style={{ color: '#2966C1' }}>● 卖N</span></span>
+            <span style={{ marginLeft: 'auto' }}>N=交易序号 | 滚轮缩放</span>
           </div>
         </div>
       )}
@@ -272,6 +287,7 @@ export default function BacktestResultView({ result }: Props) {
             <table style={S.table}>
               <thead>
                 <tr>
+                  <th style={S.th}>序号</th>
                   <th style={S.th}>买入日</th>
                   <th style={S.th}>卖出日</th>
                   <th style={{ ...S.th, ...S.thRight }}>持有天数</th>
@@ -288,9 +304,17 @@ export default function BacktestResultView({ result }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {trades.map((t, i) => (
-                  <TradeRow key={i} trade={t} strategy={req.exit_strategy} />
-                ))}
+                {(() => {
+                  // 按 entry_date 分组序号
+                  const egm = new Map<string, number>()
+                  let gs = 0
+                  trades.forEach(t => {
+                    if (!egm.has(t.entry_date)) { gs++; egm.set(t.entry_date, gs) }
+                  })
+                  return trades.map((t, i) => (
+                    <TradeRow key={i} seq={egm.get(t.entry_date) || (i + 1)} trade={t} strategy={req.exit_strategy} />
+                  ))
+                })()}
               </tbody>
             </table>
           </div>
@@ -305,7 +329,7 @@ export default function BacktestResultView({ result }: Props) {
 
 
 // ---------- 交易行组件（可展开详情） ----------
-function TradeRow({ trade: t, strategy }: { trade: TradeResult; strategy: string }) {
+function TradeRow({ trade: t, strategy, seq }: { trade: TradeResult; strategy: string; seq: number }) {
   const [expanded, setExpanded] = React.useState(false)
   const isWin = t.pnl > 0
   const isTurtle = strategy === 'turtle'
@@ -318,6 +342,9 @@ function TradeRow({ trade: t, strategy }: { trade: TradeResult; strategy: string
     half_exit: '半仓止盈',
     half_exit_low3: '半仓+低3',
     half_exit_ma5: '半仓+MA5',
+    half_exit_do_t: '半仓止盈',
+    donchian_break: '唐奇安破位',
+    do_t: '做T',
     pyramid: '加仓',
   }
 
@@ -329,6 +356,7 @@ function TradeRow({ trade: t, strategy }: { trade: TradeResult; strategy: string
         onMouseEnter={e => (e.currentTarget.style.background = colors.bgHover)}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
+        <td style={{ ...S.td, color: colors.textMuted, fontWeight: 600 }}>{seq}</td>
         <td style={{ ...S.td, color: colors.accent }}>{t.entry_date}</td>
         <td style={{ ...S.td, color: colors.accent }}>{t.exit_date}</td>
         <td style={{ ...S.td, ...S.tdRight }}>{t.holding_days}</td>
@@ -348,12 +376,16 @@ function TradeRow({ trade: t, strategy }: { trade: TradeResult; strategy: string
           {changeSignRaw(t.pnl_r)}R
         </td>
         <td style={S.td}>
-          <span style={S.badge(isWin)}>{reasonMap[t.reason] || t.reason}</span>
+          <span style={S.badge(isWin)}>
+            {t.reason === 'do_t' && t.group_date
+              ? `${reasonMap[t.reason] || t.reason}(${t.group_date.slice(5)})`
+              : (reasonMap[t.reason] || t.reason)}
+          </span>
         </td>
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={13} style={{ padding: '12px 16px', background: colors.bg, borderBottom: `1px solid ${colors.border}` }}>
+          <td colSpan={14} style={{ padding: '12px 16px', background: colors.bg, borderBottom: `1px solid ${colors.border}` }}>
             <div style={{ display: 'flex', gap: 16, fontSize: 12, fontFamily: fonts.mono, lineHeight: 1.8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ color: colors.accent, fontWeight: 600, marginBottom: 4 }}>买入逻辑</div>

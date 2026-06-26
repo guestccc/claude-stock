@@ -37,6 +37,7 @@ export interface TradeResult {
   breakout_close: number
   breakout_exceed_pct: number
   exit_formula: string
+  group_date: string
   turtle_units?: { entry_date: string; entry_price: number; shares: number }[]
   turtle_unit_size?: number
 }
@@ -175,4 +176,109 @@ export async function getBacktestDetail(id: number): Promise<BacktestDetailRespo
 /** 删除历史回测 */
 export async function deleteBacktest(id: number): Promise<void> {
   await client.delete(`/backtest/history/${id}`)
+}
+
+
+// ---------- 组合回测（多股票）----------
+
+export interface PortfolioBacktestRequest {
+  codes: string[]
+  start_date: string
+  end_date?: string
+  initial_capital: number
+  max_positions: number
+  exit_strategy: string
+  tp_multiplier: number
+  trailing_atr_k: number
+  half_exit_pct: number
+  score_config?: Record<string, { weight?: number; enabled?: boolean; params?: Record<string, any> }>
+}
+
+export interface StockResult {
+  code: string
+  name: string
+  trades: TradeResult[]
+  equity_curve: EquityPoint[]
+  stats: BacktestStats
+}
+
+export interface PortfolioEquityPoint extends EquityPoint {
+  num_positions?: number
+}
+
+export interface PortfolioBacktestResponse {
+  portfolio_stats: BacktestStats
+  overall_equity: PortfolioEquityPoint[]
+  stock_results: StockResult[]
+}
+
+export interface ScoreDimension {
+  key: string
+  name: string
+  weight: number
+  enabled: boolean
+  params: Record<string, any>
+}
+
+export interface ScoreConfigResponse {
+  dimensions: ScoreDimension[]
+}
+
+/** 运行组合回测 */
+export async function runPortfolioBacktest(
+  params: PortfolioBacktestRequest
+): Promise<PortfolioBacktestResponse> {
+  const { data } = await client.post('/backtest/portfolio/run', params)
+  return data
+}
+
+/** 获取评分配置 */
+export async function getScoreConfig(): Promise<ScoreConfigResponse> {
+  const { data } = await client.get('/backtest/score-config')
+  return data
+}
+
+/** 更新评分配置 */
+export async function updateScoreConfig(
+  dimensions: ScoreDimension[]
+): Promise<ScoreConfigResponse> {
+  const { data } = await client.post('/backtest/score-config', dimensions)
+  return data
+}
+
+// ---------- 候选股票池 ----------
+
+export interface PortfolioPool {
+  id: number
+  name: string
+  codes: string[]
+  code_names: Record<string, string>
+  created_at: string
+}
+
+export interface PortfolioPoolListResponse {
+  items: PortfolioPool[]
+}
+
+/** 获取候选池列表 */
+export async function getPortfolioPools(): Promise<PortfolioPoolListResponse> {
+  const { data } = await client.get('/backtest/pools')
+  return data
+}
+
+/** 创建候选池 */
+export async function createPortfolioPool(params: { name: string; codes: string[] }): Promise<PortfolioPool> {
+  const { data } = await client.post('/backtest/pools', params)
+  return data
+}
+
+/** 更新候选池 */
+export async function updatePortfolioPool(id: number, params: { name?: string; codes?: string[] }): Promise<PortfolioPool> {
+  const { data } = await client.put(`/backtest/pools/${id}`, params)
+  return data
+}
+
+/** 删除候选池 */
+export async function deletePortfolioPool(id: number): Promise<void> {
+  await client.delete(`/backtest/pools/${id}`)
 }

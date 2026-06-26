@@ -25,6 +25,7 @@ from a_stock_fetcher import (
     fetch_etf_basic,
     fetch_all_etf_daily,
     fetch_etf_daily_full_history,
+    fix_etf_split_data,
     # 除权修复
     refetch_after_ex_rights,
     detect_and_fix_ex_rights,
@@ -58,6 +59,8 @@ HELP_TEXT = """
   etf-basic              - 同步 ETF 基础信息（全量刷新）
   etf-daily [N]          - 批量获取 ETF 日线数据（增量更新）
   etf-daily-full <CODE>  - 获取单只 ETF 全部历史日线数据
+  etf-fix-split [--source mx] - 检查并修复 ETF 拆分/合并导致的虚假涨跌幅
+                          --source: auto(默认,东财优先→妙想备用) | eastmoney | mx
   board-kline-full       - 同步所有概念板块历史K线（首次运行较慢）
   rules/rules2/rules3   - 查看配置规则
   scheduler              - 启动定时任务调度器
@@ -105,6 +108,7 @@ COMMAND_REGISTRY = [
     ("ETF", "etf-basic", "同步ETF基础信息", None, None),
     ("ETF", "etf-daily", "批量获取ETF日线", "limit", "限制数量N（可选）"),
     ("ETF", "etf-daily-full", "获取单只ETF全量历史", "code", "ETF代码"),
+    ("ETF", "etf-fix-split", "检查修复ETF拆分虚假涨跌幅(支持--source mx)", None, None),
     # --- 基金 ---
     ("基金", "fund-add", "添加自选基金", "code", "基金代码"),
     ("基金", "fund-update", "更新基金估值", None, None),
@@ -376,6 +380,23 @@ def main():
             print(result)
         else:
             print(f"结果: {result}")
+
+    elif cmd == "etf-fix-split":
+        # 解析 --source 参数: auto(默认) | eastmoney | mx
+        fix_source = 'auto'
+        for i, arg in enumerate(args):
+            if arg == '--source' and i + 1 < len(args):
+                fix_source = args[i + 1]
+        print("=" * 60)
+        print(f"检查并修复 ETF 拆分/合并虚假涨跌幅 (数据源: {fix_source})")
+        print("=" * 60)
+        result = fix_etf_split_data(source=fix_source)
+        print(f"\n扫描: {result['scanned']} 条异常")
+        print(f"修复: {result['fixed']} 只 ETF")
+        if result['failed']:
+            print(f"失败: {len(result['failed'])} 只")
+            for f in result['failed']:
+                print(f"  {f['code']}: {f['reason']}")
 
     elif cmd == "board-kline-full":
         start_date = '20150101'

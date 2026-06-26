@@ -157,6 +157,21 @@ class BacktestRecentStock(Base):
     last_run_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='最近运行时间')
 
 
+class BacktestPortfolioPool(Base):
+    """组合回测候选股票池"""
+    __tablename__ = 'backtest_portfolio_pools'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False, comment='候选池名称')
+    codes_json = Column(Text, nullable=False, default='[]', comment='股票代码列表 JSON')
+    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+
+    __table_args__ = (
+        Index('idx_pool_name', 'name'),
+    )
+
+
 class BoardWatchlist(Base):
     """关注的板块"""
     __tablename__ = 'board_watchlist'
@@ -217,11 +232,28 @@ class PositionTPSL(Base):
     )
 
 
-def init_tables():
-    """初始化所有表（启动时调用一次）"""
-    Base.metadata.create_all(bind=db.engine)
-    # 兼容已有数据库：补充新增列
-    _safe_add_column('fund_watchlist', 'tags', 'TEXT DEFAULT ""')
+class SupportResistance(Base):
+    """AI 识别的压力支撑位记录"""
+    __tablename__ = 'support_resistance'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment='股票代码')
+
+    # AI 识别结果
+    pressure_price = Column(Float, nullable=False, comment='压力位价格')
+    support_price = Column(Float, nullable=False, comment='支撑位价格')
+    reason = Column(Text, nullable=True, comment='AI分析理由')
+
+    # 状态: active/triggered/cancelled
+    status = Column(String(10), default='active', comment='状态')
+
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        Index('idx_sr_code', 'code'),
+        Index('idx_sr_status', 'status'),
+    )
 
 
 def _safe_add_column(table: str, column: str, col_type: str):
@@ -233,3 +265,9 @@ def _safe_add_column(table: str, column: str, col_type: str):
             conn.commit()
         except Exception:
             pass
+
+
+# 初始化所有表（模块加载时执行）
+Base.metadata.create_all(bind=db.engine)
+# 兼容已有数据库：补充新增列
+_safe_add_column('fund_watchlist', 'tags', 'TEXT DEFAULT ""')

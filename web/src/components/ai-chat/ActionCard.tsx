@@ -1,7 +1,8 @@
-/** Action 执行卡片 — 确认/取消 AI 建议的操作 */
+/** Action 执行卡片 — 通过注册表路由到对应卡片组件 */
 import { useState } from 'react'
 import { colors, fonts } from '../../theme/tokens'
 import { executeAction } from '../../api/chat'
+import { getActionEntry } from './actions/registry'
 import type { ChatAction } from '../../types/chat'
 
 interface Props {
@@ -26,54 +27,9 @@ export default function ActionCard({ action, onExecuted }: Props) {
     }
   }
 
-  // 根据 action 类型渲染不同的卡片内容
-  const renderContent = () => {
-    const d = action.data
-    switch (action.type) {
-      case 'set_tp_sl':
-        return (
-          <div>
-            <div style={{ fontSize: 13, color: colors.textPrimary, fontWeight: 600, marginBottom: 8 }}>
-              AI 建议设置止盈止损
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
-              <div style={{ background: '#1a0d0d', border: `1px solid ${colors.rise}`, borderRadius: 6, padding: 8 }}>
-                <div style={{ color: colors.textMuted, fontSize: 10 }}>止盈价</div>
-                <div style={{ color: colors.rise, fontSize: 16, fontWeight: 700 }}>{d.tp_price}</div>
-              </div>
-              <div style={{ background: '#0d1a0d', border: `1px solid ${colors.fall}`, borderRadius: 6, padding: 8 }}>
-                <div style={{ color: colors.textMuted, fontSize: 10 }}>止损价</div>
-                <div style={{ color: colors.fall, fontSize: 16, fontWeight: 700 }}>{d.sl_price}</div>
-              </div>
-            </div>
-            {d.strategy && (
-              <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
-                策略: {d.strategy}
-              </div>
-            )}
-          </div>
-        )
-      case 'add_watchlist':
-        return (
-          <div>
-            <div style={{ fontSize: 13, color: colors.textPrimary, fontWeight: 600 }}>
-              加入自选股: {d.stock_code}
-            </div>
-          </div>
-        )
-      default:
-        return (
-          <div>
-            <div style={{ fontSize: 13, color: colors.textPrimary, fontWeight: 600 }}>
-              动作: {action.type}
-            </div>
-            <pre style={{ fontSize: 11, color: colors.textMuted, marginTop: 4, overflow: 'auto' }}>
-              {JSON.stringify(action.data, null, 2)}
-            </pre>
-          </div>
-        )
-    }
-  }
+  // 从注册表获取对应的卡片组件
+  const entry = getActionEntry(action.type)
+  const CardComponent = entry.card
 
   return (
     <div
@@ -86,7 +42,7 @@ export default function ActionCard({ action, onExecuted }: Props) {
         fontFamily: fonts.mono,
       }}
     >
-      {renderContent()}
+      <CardComponent data={action.data} />
 
       {!result ? (
         <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>

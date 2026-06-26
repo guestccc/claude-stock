@@ -186,7 +186,11 @@ def build_stock_prompt(
 - 当前市值: {market_value:.2f} 元
 - 浮动盈亏: {pnl_pct:+.2f}%"""
 
-    # 6. 组装系统提示词
+    # 6. 从 action_registry 自动提取 action 说明
+    from server.services.action_registry import get_all_prompt_hints
+    action_hints = get_all_prompt_hints()
+
+    # 7. 组装系统提示词
     system_prompt = f"""你是一位资深 A 股投资分析师，正在分析股票 {name}({code})。
 
 【当前行情】
@@ -211,12 +215,10 @@ def build_stock_prompt(
 
 你可以执行以下动作，在分析结论后输出对应的 XML 标签（必须放在回复最后）：
 
-1. 设置止盈止损
-<action type="set_tp_sl" data='{{"stock_code":"{code}","tp_price":16.80,"sl_price":13.50,"strategy":"突破回踩策略","reason":"股价突破布林带上轨，RSI接近超买，设前高为止盈，成本下方5%为止损"}}' />
+{action_hints}
 
 要求：
-- tp_price 和 sl_price 必须是纯数字，不要带单位
-- 给出止盈止损时必须说明对应的盈亏百分比
+- 价格字段必须为纯数字，不要带单位
 - 如果用户未提供持仓成本，data 中 omit cost_price 和 quantity 字段
 - 回复使用 Markdown 格式，关键数据加粗
 

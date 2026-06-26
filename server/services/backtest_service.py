@@ -20,36 +20,48 @@ INITIAL_CAPITAL = 100000  # 初始本金 10万
 
 
 def get_stock_name(code: str) -> str:
-    """通过 SQLAlchemy session 获取股票名称"""
+    """通过 SQLAlchemy session 获取股票/ETF 名称（先查股票，fallback 查 ETF）"""
     session = db.get_session()
     try:
         row = session.execute(
             text("SELECT 股票简称 FROM stock_basic WHERE code = :code"),
             {"code": code}
         ).fetchone()
-        return row[0] if row else code
+        if row and row[0]:
+            return row[0]
+        # fallback: ETF
+        etf_row = session.execute(
+            text("SELECT name FROM etf_basic WHERE code = :code"),
+            {"code": code}
+        ).fetchone()
+        return etf_row[0] if etf_row else code
     finally:
         session.close()
 
 
 def get_stock_data(code: str, start_date: str, end_date: str, lookback: int = 60) -> List[Dict[str, Any]]:
-    """获取股票历史数据（含回看期），使用 SQLAlchemy session"""
+    """获取股票/ETF 历史数据（含回看期），先查股票日线，fallback 查 ETF 日线"""
     start = datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=lookback)
+    params = {
+        "code": code,
+        "start": start.strftime("%Y-%m-%d"),
+        "end": end_date + " 23:59:59",
+    }
+    sql = """
+        SELECT 日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额
+        FROM {table}
+        WHERE code = :code AND 日期 >= :start AND 日期 <= :end
+        ORDER BY 日期
+    """
+
     session = db.get_session()
     try:
-        rows = session.execute(
-            text("""
-            SELECT 日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额
-            FROM stock_daily
-            WHERE code = :code AND 日期 >= :start AND 日期 <= :end
-            ORDER BY 日期
-            """),
-            {
-                "code": code,
-                "start": start.strftime("%Y-%m-%d"),
-                "end": end_date + " 23:59:59",
-            }
-        ).fetchall()
+        # 先查股票日线
+        rows = session.execute(text(sql.format(table="stock_daily")), params).fetchall()
+        if not rows:
+            # fallback: ETF 日线（列名完全一致）
+            rows = session.execute(text(sql.format(table="etf_daily")), params).fetchall()
+
         result = []
         for r in rows:
             date_str = str(r[0])[:10] if r[0] else None
@@ -99,6 +111,16 @@ def calc_donchian_upper(rows, period=DONCHIAN_PERIOD, exclude_today=True):
         return 0.0
     recent = rows[-period:]
     return max((r["high"] or 0) for r in recent)
+
+
+def calc_donchian_lower(rows, period=DONCHIAN_PERIOD, exclude_today=True):
+    """计算唐奇安下轨（N日最低价的最低值）"""
+    if exclude_today:
+        rows = rows[:-1]
+    if len(rows) < period:
+        return 0.0
+    recent = rows[-period:]
+    return min((r["low"] or 0) for r in recent)
 
 
 def calc_boll_upper(rows, period=BOLL_PERIOD, std_k=BOLL_STD, exclude_today=True):
@@ -206,6 +228,62 @@ class Trade:
         self.exit_trigger_price = 0.0         # 触发卖出的那根 K 线的价（最高 or 最低）
         self.exit_trigger_date = ""           # 触发卖出那天的日期
         self.exit_formula = ""                # 文字说明：怎么算的
+        self.group_date = ""                  # 所属主仓位开仓日期（T交易用）
+
+
+class TPosition:
+    """做T子仓位：半仓止盈后，利用获利资金做短线波段"""
+    def __init__(self, buy_date, buy_price, shares):
+        self.buy_date = buy_date       # 买入日期
+        self.buy_price = buy_price     # Bt = 收盘价 + 0.02
+        self.shares = shares           # 股数（取整到百股）
+        self.cash_used = shares * buy_price   # 占用资金
+        self.target_price = round(buy_price * 1.025, 3)  # 卖出目标价 = Bt × 1.025
+        self.sold = False              # 是否已平仓
+        self.sell_date = None
+        self.sell_price = None
+        self.pnl = 0.0
+        self._entry_row_idx = 0       # 买入日在 rows 中的索引（用于图表）
+        self.parent_entry_date = ""   # 所属主仓位开仓日期
+
+
+def _close_t_position(tp, sell_date, sell_price):
+    """平仓T仓位"""
+    tp.sold = True
+    tp.sell_date = sell_date
+    tp.sell_price = sell_price
+    tp.pnl = (sell_price - tp.buy_price) * tp.shares
+
+
+def _record_t_trade(trades, tp, rows, exit_idx, reason="do_t"):
+    """将已平仓的T仓位记录为Trade对象"""
+    t = Trade(
+        entry_date=tp.buy_date,
+        entry_price=tp.buy_price,
+        stop_loss=0,
+        take_profit=tp.target_price,
+        atr=0,
+        reason="do_t",
+    )
+    t.shares = tp.shares
+    t.exit_date = tp.sell_date
+    t.exit_price = tp.sell_price
+    t.pnl = tp.pnl
+    t.pnl_r = tp.pnl / tp.cash_used if tp.cash_used > 0 else 0
+    t.holding_days = (datetime.strptime(tp.sell_date, "%Y-%m-%d") - datetime.strptime(tp.buy_date, "%Y-%m-%d")).days
+    t._entry_row_idx = tp._entry_row_idx
+    t.trade_chart_ohlc = _extract_trade_chart(rows, tp._entry_row_idx, exit_idx)
+    # 关联主仓位开仓日期
+    t.group_date = tp.parent_entry_date
+    # 详细说明
+    t.exit_trigger_price = round(tp.sell_price, 3)
+    t.exit_trigger_date = tp.sell_date
+    t.exit_formula = (
+        f"做T: 买入 {tp.shares}股 @ {tp.buy_price:.3f}，"
+        f"卖出 @ {tp.sell_price:.3f}（目标价 {tp.target_price:.3f}），"
+        f"原因: {reason}，盈亏 ¥{tp.pnl:.2f}"
+    )
+    trades.append(t)
 
 
 def backtest_stock(code, start_date, end_date, initial_capital=INITIAL_CAPITAL,
@@ -242,6 +320,11 @@ def backtest_stock(code, start_date, end_date, initial_capital=INITIAL_CAPITAL,
     # 持仓期间最大回撤
     position_max_dd = 0.0
     position_dd_entry_price = 0.0  # 回撤最大时的入场价
+
+    # === 做T相关状态 ===
+    t_positions = []         # 活跃的T仓位列表
+    t_closed_trades = []     # 已平仓的T交易（缓冲，等主仓位清仓后一起追加）
+    t_profit_cash = 0.0      # 可用于做T的总资金（= 半仓止盈获利S）
 
     for i in range(DONCHIAN_PERIOD, len(rows) - 1):
         today = rows[i]
@@ -947,6 +1030,166 @@ def backtest_stock(code, start_date, end_date, initial_capital=INITIAL_CAPITAL,
                                 f"触发清仓 | 前3日收盘: {rows[i-1]['close']:.3f}, {rows[i-2]['close']:.3f}, {rows[i-3]['close']:.3f}"
                             )
 
+            elif exit_strategy == "half_exit_do_t":
+                # 半仓止盈 + 做T策略：
+                # Phase 1: 同 half_exit，半仓止盈
+                # Phase 2: 利用获利资金做T（收阴买入，涨2.5%卖出），唐奇安下轨破位清仓
+                half_pct = half_exit_pct / 100.0
+                shares_to_sell_first = math.floor(position.shares * half_pct / 100) * 100
+                shares_to_sell_first = max(shares_to_sell_first, 100)
+
+                if not position.half_exited:
+                    # === Phase 1: 半仓止盈前（同 half_exit 逻辑） ===
+                    # 止损（固定，作用于全部仓位）
+                    if low_today <= position.stop_loss:
+                        open_today = today["open"] or 0
+                        exit_price = min(position.stop_loss, open_today) if open_today > 0 else position.stop_loss
+                        exit_reason = "stop_loss"
+                        position.exit_trigger_price = round(low_today, 3)
+                        position.exit_trigger_date = today["date"]
+                        gap_note = "，跳空低开按开盘价成交" if open_today > 0 and open_today < position.stop_loss else ""
+                        position.exit_formula = (
+                            f"盘中最低 {low_today:.3f} ≤ 止损价 {position.stop_loss:.3f}{gap_note}，"
+                            f"触发止损 | 止损 = 入场价 {position.entry_price:.3f} - ATR {position.atr:.3f} × 1.3"
+                        )
+                    elif close_today_pos < position.stop_loss:
+                        exit_price = position.stop_loss
+                        exit_reason = "stop_loss"
+                        position.exit_trigger_price = round(close_today_pos, 3)
+                        position.exit_trigger_date = today["date"]
+                        position.exit_formula = (
+                            f"收盘价 {close_today_pos:.3f} < 止损价 {position.stop_loss:.3f}，"
+                            f"触发止损 | 止损 = 入场价 {position.entry_price:.3f} - ATR {position.atr:.3f} × 1.3"
+                        )
+                    # 检查止盈目标——半仓止盈，拆成两笔交易
+                    elif high_today >= position.take_profit:
+                        open_today = today["open"] or 0
+                        actual_tp = max(position.take_profit, open_today) if open_today > 0 else position.take_profit
+                        gap_note = "（跳空高开按开盘价成交）" if open_today > 0 and open_today > position.take_profit else ""
+                        half_pnl = (actual_tp - position.entry_price) * shares_to_sell_first
+                        capital += half_pnl
+                        if capital > peak_capital:
+                            peak_capital = capital
+
+                        # 记录做T可用资金 S = 半仓止盈卖出的总金额（股数 × 卖出价）
+                        t_profit_cash = shares_to_sell_first * actual_tp
+
+                        # === Trade 1：入场 → 半仓止盈 ===
+                        t1 = Trade(
+                            entry_date=position.entry_date,
+                            entry_price=position.entry_price,
+                            stop_loss=position.stop_loss,
+                            take_profit=position.take_profit,
+                            atr=position.atr,
+                            reason="half_exit_do_t",
+                        )
+                        t1.shares = shares_to_sell_first
+                        t1.risk_per_share = position.risk_per_share
+                        t1.upper_band = position.upper_band
+                        t1.breakout_close = position.breakout_close
+                        t1.breakout_upper_date = position.breakout_upper_date
+                        t1.breakout_exceed_pct = position.breakout_exceed_pct
+                        t1.boll_upper = position.boll_upper
+                        t1.boll_middle = position.boll_middle
+                        t1.boll_breakout = position.boll_breakout
+                        t1.breakout_range_highs = position.breakout_range_highs
+                        t1.breakout_range_ohlc = position.breakout_range_ohlc
+                        t1._entry_row_idx = position._entry_row_idx
+                        t1.exit_date = today["date"]
+                        t1.exit_price = actual_tp
+                        t1.exit_trigger_price = round(high_today, 3)
+                        t1.exit_trigger_date = today["date"]
+                        t1.exit_formula = (
+                            f"盘中最高 {high_today:.3f} ≥ 止盈价 {position.take_profit:.3f}{gap_note}，"
+                            f"半仓止盈！卖出 {shares_to_sell_first} 股 ¥{actual_tp:.3f}，"
+                            f"获利 ¥{half_pnl:.2f}，剩余 {position.shares - shares_to_sell_first} 股开始做T"
+                        )
+                        t1.pnl = half_pnl
+                        t1.pnl_r = half_pnl / (position.risk_per_share * shares_to_sell_first) if position.risk_per_share > 0 else 0
+                        t1.holding_days = (datetime.strptime(today["date"], "%Y-%m-%d") - datetime.strptime(position.entry_date, "%Y-%m-%d")).days
+                        t1.trade_chart_ohlc = _extract_trade_chart(rows, position._entry_row_idx, i)
+                        t1.high_since_entry = position.high_since_entry
+                        t1.target_reached = False
+                        t1.half_exited = False
+                        t1.shares_at_half = 0
+                        t1.price_at_half = 0.0
+                        t1.high_since_half = 0.0
+                        t1.pnl_half = 0.0
+                        t1.max_dd = 0.0
+                        trades.append(t1)
+
+                        # === Trade 2：剩余仓位继续跟踪 + 做T ===
+                        remaining_shares = position.shares - shares_to_sell_first
+                        position.shares = remaining_shares
+                        position.half_exited = True
+                        position.pnl_half = half_pnl
+                        position.shares_at_half = remaining_shares
+                        position.shares_sold_at_half = shares_to_sell_first
+                        position.price_at_half = actual_tp
+                        position.high_since_half = max(high_today, actual_tp)
+                        position.high_since_entry = actual_tp
+                        position.high_since_target = actual_tp
+                        position.target_reached = True
+                        position.exit_trigger_price = round(high_today, 3)
+                        position.exit_trigger_date = today["date"]
+                        position.exit_formula = (
+                            f"半仓止盈，获利 ¥{half_pnl:.2f} 用于做T，"
+                            f"剩余 {remaining_shares} 股移动止损跟踪"
+                        )
+                else:
+                    # === Phase 2: 半仓止盈后，做T阶段 ===
+                    _force_exit_all = False
+
+                    # 优先级 1：唐奇安下轨破位 → 全部清仓（主仓位 + T仓位）
+                    donchian_low = calc_donchian_lower(rows[:i + 1], DONCHIAN_PERIOD, exclude_today=True)
+                    if donchian_low > 0 and close_today_pos < donchian_low:
+                        exit_price = close_today_pos
+                        exit_reason = "donchian_break"
+                        position.exit_trigger_price = round(close_today_pos, 3)
+                        position.exit_trigger_date = today["date"]
+                        position.exit_formula = (
+                            f"收盘价 {close_today_pos:.3f} < 唐奇安下轨 {donchian_low:.3f}，"
+                            f"趋势破位！全部清仓（含T仓位）| 唐奇安下轨 = {DONCHIAN_PERIOD}日最低价的最低值"
+                        )
+                        for tp in t_positions:
+                            if not tp.sold:
+                                _close_t_position(tp, today["date"], close_today_pos)
+                                capital += tp.pnl
+                                _record_t_trade(t_closed_trades, tp, rows, i, "唐奇安破位清仓")
+                        t_positions = []
+                        _force_exit_all = True
+
+                    if not _force_exit_all:
+                        # 优先级 2：T仓止盈（涨2.5%卖出）
+                        for tp in t_positions:
+                            if not tp.sold and high_today >= tp.target_price:
+                                _close_t_position(tp, today["date"], tp.target_price)
+                                capital += tp.pnl
+                                if capital > peak_capital:
+                                    peak_capital = capital
+                                _record_t_trade(t_closed_trades, tp, rows, i, "T仓涨2.5%止盈")
+
+                        # 优先级 3：收阴日买入做T
+                        open_today = today["open"] or 0
+                        is_bearish = close_today_pos < open_today
+                        has_unsold_t = any(not tp.sold for tp in t_positions)
+                        if not has_unsold_t and is_bearish and t_profit_cash > 0 and close_today_pos > 0:
+                            bt = round(close_today_pos + 0.02, 3)
+                            t_shares = 0
+                            for fraction in (1 / 3, 1.0):
+                                buy_amount = t_profit_cash * fraction
+                                shares_raw = math.floor(buy_amount / bt / 100) * 100
+                                if shares_raw >= 100 and shares_raw * bt <= t_profit_cash:
+                                    t_shares = shares_raw
+                                    break
+                            if t_shares >= 100:
+                                new_tp = TPosition(today["date"], bt, t_shares)
+                                new_tp._entry_row_idx = i
+                                new_tp.parent_entry_date = position.entry_date  # 关联主仓位
+                                t_positions.append(new_tp)
+                            else:
+                                pass  # S不够买100股，跳过
+
             elif exit_strategy == "turtle":
                 # 经典海龟交易策略：
                 # - 止损：固定 2×ATR（灾难性保护，不跟踪）
@@ -1063,6 +1306,11 @@ def backtest_stock(code, start_date, end_date, initial_capital=INITIAL_CAPITAL,
                     position.trade_chart_ohlc = _extract_trade_chart(rows, position._entry_row_idx, i)
                     trades.append(position)
 
+                # 将已平仓的T交易追加到trades列表（放在主仓位交易之后）
+                if t_closed_trades:
+                    trades.extend(t_closed_trades)
+                    t_closed_trades = []
+
                 position_max_dd = 0.0
                 capital += pnl
 
@@ -1089,7 +1337,9 @@ def backtest_stock(code, start_date, end_date, initial_capital=INITIAL_CAPITAL,
                         print(f"[海龟加仓] {today['date']} 第{len(position.units)}仓 @ {fill_price:.2f} 股数={position.unit_size} 总股数={position.shares}")
 
             # 记录当日净值（含最大回撤）
-            pos_value = position.shares * close_today_pos if position else 0
+            # T仓位市值（未平仓的T仓位按收盘价估值）
+            t_pos_value = sum(tp.shares * close_today_pos for tp in t_positions if not tp.sold)
+            pos_value = (position.shares * close_today_pos if position else 0) + t_pos_value
             current_total = capital
             current_peak = peak_capital
             current_dd = current_peak - current_total
@@ -1178,11 +1428,29 @@ def backtest_stock(code, start_date, end_date, initial_capital=INITIAL_CAPITAL,
             trades.append(position)
         capital += pnl
 
+    # 强制平仓未平仓的T仓位（回测结束时）
+    if t_positions and len(rows) > 0:
+        last = rows[-1]
+        for tp in t_positions:
+            if not tp.sold:
+                _close_t_position(tp, last["date"], last["close"])
+                capital += tp.pnl
+                _record_t_trade(t_closed_trades, tp, rows, len(rows) - 1, "回测结束强制平仓")
+        t_positions = []
+
+    # 追加剩余T交易到trades
+    if t_closed_trades:
+        trades.extend(t_closed_trades)
+        t_closed_trades = []
+
     # 计算统计
     stats = calc_stats(trades, initial_capital, capital, peak_capital, start_date, end_date, equity_curve)
     # 只返回回测区间内的 K 线数据（用于绘图）
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
     klines = [r for r in rows if r["date"] and datetime.strptime(r["date"], "%Y-%m-%d") >= start_dt]
+
+    # 按入场日期排序（T交易缓冲导致顺序可能错乱）
+    trades.sort(key=lambda t: t.entry_date)
 
     # 序列化 Trade 对象为 dict
     trade_dicts = [_trade_to_dict(t) for t in trades]
@@ -1202,7 +1470,7 @@ def merge_split_trades(trades):
         if (i + 1 < len(trades)
                 and trades[i + 1].entry_date == t.entry_date
                 and trades[i + 1].entry_price == t.entry_price
-                and t.reason in ("half_exit", "half_exit_ma5", "half_exit_low3")):
+                and t.reason in ("half_exit", "half_exit_ma5", "half_exit_low3", "half_exit_do_t")):
             t2 = trades[i + 1]
             m = Trade(
                 entry_date=t.entry_date,
@@ -1367,6 +1635,7 @@ def _trade_to_dict(t) -> Dict[str, Any]:
         "breakout_close": round(t.breakout_close, 3) if t.breakout_close else 0,
         "breakout_exceed_pct": round(t.breakout_exceed_pct, 3) if t.breakout_exceed_pct else 0,
         "exit_formula": t.exit_formula or "",
+        "group_date": getattr(t, 'group_date', '') or t.entry_date,
     }
     # 海龟加仓单元详情
     if hasattr(t, 'units') and len(t.units) > 0:

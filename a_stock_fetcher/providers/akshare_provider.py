@@ -1,6 +1,14 @@
 """
-akshare 日线数据源 Provider
-通过 akshare.stock_zh_a_daily 获取A股日线数据（新浪财经数据源）
+akshare 日线数据源 Provider — 新浪财经
+通过 akshare.stock_zh_a_daily 获取 A 股日线数据
+
+优点:
+  - 新浪接口稳定，无限流风险
+  - 前复权数据（adjust='qfq'），处理了除权除息
+
+缺点:
+  - 字段较少：不含振幅/涨跌幅/涨跌额/换手率，需自行计算
+  - 前复权价格与真实交易价格不同，展示时需注意
 """
 import time
 import akshare as ak

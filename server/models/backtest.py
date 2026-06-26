@@ -1,5 +1,5 @@
 """回测 Pydantic schemas"""
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -151,3 +151,79 @@ class ExitStrategyInfo(BaseModel):
 class ExitStrategyListResponse(BaseModel):
     """出场策略列表"""
     strategies: List[ExitStrategyInfo]
+
+
+# ============================================================
+# 组合回测（多股票）
+# ============================================================
+
+class PortfolioBacktestRequest(BaseModel):
+    """组合回测请求"""
+    codes: List[str] = Field(..., description="候选股票池代码列表")
+    start_date: str = Field("2024-01-01", description="回测开始日期")
+    end_date: Optional[str] = Field(None, description="回测结束日期，默认当天")
+    initial_capital: float = Field(100000, gt=0, description="初始本金")
+    max_positions: int = Field(3, ge=1, le=10, description="最多同时持仓数")
+    exit_strategy: str = Field("fixed", description="出场策略")
+    tp_multiplier: float = Field(2.0, gt=0, description="止盈倍数")
+    trailing_atr_k: float = Field(1.0, ge=0, description="跟踪止损 ATR 系数")
+    half_exit_pct: float = Field(50, ge=0, le=100, description="半仓止盈比例（组合模式保留参数）")
+    score_config: Optional[Dict[str, Any]] = Field(None, description="评分配置覆盖")
+
+
+class StockResult(BaseModel):
+    """单只股票在组合中的回测结果"""
+    code: str
+    name: str
+    trades: List[TradeResult]
+    equity_curve: List[EquityPoint]
+    stats: BacktestStats
+
+
+class PortfolioBacktestResponse(BaseModel):
+    """组合回测响应"""
+    portfolio_stats: BacktestStats
+    overall_equity: List[EquityPoint]
+    stock_results: List[StockResult]
+
+
+class ScoreDimension(BaseModel):
+    """评分维度配置"""
+    key: str
+    name: str
+    weight: float = Field(0, ge=0, le=100)
+    enabled: bool = True
+    params: Dict[str, Any] = {}
+
+
+class ScoreConfigResponse(BaseModel):
+    """评分配置响应"""
+    dimensions: List[ScoreDimension]
+
+
+# ---------- 候选股票池 ----------
+
+class PortfolioPool(BaseModel):
+    """候选股票池"""
+    id: int
+    name: str
+    codes: List[str]
+    code_names: Dict[str, str] = Field(default_factory=dict, description="code→名称映射")
+    created_at: str
+
+
+class PortfolioPoolListResponse(BaseModel):
+    """候选池列表响应"""
+    items: List[PortfolioPool]
+
+
+class PortfolioPoolCreate(BaseModel):
+    """创建候选池"""
+    name: str = Field(..., min_length=1, max_length=50)
+    codes: List[str] = Field(..., min_length=1)
+
+
+class PortfolioPoolUpdate(BaseModel):
+    """更新候选池"""
+    name: Optional[str] = None
+    codes: Optional[List[str]] = None

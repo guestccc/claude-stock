@@ -1,6 +1,17 @@
 """
 BaoStock 日线数据源 Provider
 从 daily.py 提取的 BaoStock 相关逻辑，只负责数据获取，返回标准化格式
+
+优点:
+  - 完全免费开源，无 API 频率限制
+  - 前复权数据（adjustflag='2'）
+  - 数据稳定可靠，适合大批量拉取
+
+缺点:
+  - 需要先 login()，使用完毕需 logout()，有全局状态管理开销
+  - 底层连接非线程安全，需加锁
+  - 字段较少：不含振幅/涨跌幅/换手率
+  - 数据更新可能有延迟（通常 T+1）
 """
 import threading
 import pandas as pd

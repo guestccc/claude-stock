@@ -1,12 +1,18 @@
 """回测路由"""
 import json
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from server.services.backtest_service import backtest_stock, get_stock_name
+from server.services.portfolio_backtest_service import (
+    portfolio_backtest,
+    SUPPORTED_STRATEGIES as PORTFOLIO_STRATEGIES,
+)
+from server.services.score_engine import get_score_config, save_score_config
 from server.models.backtest import (
     BacktestRequest,
     BacktestResponse,
@@ -20,11 +26,59 @@ from server.models.backtest import (
     BacktestDetailResponse,
     ExitStrategyListResponse,
     ExitStrategyInfo,
+    PortfolioBacktestRequest,
+    PortfolioBacktestResponse,
+    StockResult,
+    ScoreDimension,
+    ScoreConfigResponse,
+    PortfolioPool,
+    PortfolioPoolListResponse,
+    PortfolioPoolCreate,
+    PortfolioPoolUpdate,
 )
-from server.db.models import BacktestResult as BacktestResultORM, BacktestTrade as BacktestTradeORM, BacktestRecentStock as BacktestRecentStockORM
+from server.db.models import (
+    BacktestResult as BacktestResultORM,
+    BacktestTrade as BacktestTradeORM,
+    BacktestRecentStock as BacktestRecentStockORM,
+    BacktestPortfolioPool as BacktestPortfolioPoolORM,
+)
 from a_stock_db.database import db
 
 router = APIRouter(prefix="/backtest", tags=["回测"])
+
+
+def _batch_get_stock_names(codes: List[str]) -> Dict[str, str]:
+    """批量获取股票/ETF名称（2次查询覆盖全部）"""
+    if not codes:
+        return {}
+    session = db.get_session()
+    try:
+        result = {}
+        code_params = {f"c{i}": code for i, code in enumerate(codes)}
+        in_clause = ", ".join(f":c{i}" for i in range(len(codes)))
+        # 查 stock_basic
+        rows = session.execute(
+            text(f"SELECT code, 股票简称 FROM stock_basic WHERE code IN ({in_clause})"),
+            code_params,
+        ).fetchall()
+        for r in rows:
+            if r[1]:
+                result[r[0]] = r[1]
+        # 查 etf_basic（补未命中的）
+        missing = [c for c in codes if c not in result]
+        if missing:
+            etf_params = {f"e{i}": code for i, code in enumerate(missing)}
+            etf_in = ", ".join(f":e{i}" for i in range(len(missing)))
+            etf_rows = session.execute(
+                text(f"SELECT code, name FROM etf_basic WHERE code IN ({etf_in})"),
+                etf_params,
+            ).fetchall()
+            for r in etf_rows:
+                if r[1]:
+                    result[r[0]] = r[1]
+        return result
+    finally:
+        session.close()
 
 
 def _record_recent_stock(code: str, name: str):
@@ -57,6 +111,7 @@ STRATEGIES = [
     {"key": "half_exit", "name": "半仓止盈", "description": "半仓固定止盈，剩余仓位移动止损"},
     {"key": "half_exit_ma5", "name": "半仓止盈+5日线", "description": "半仓固定止盈，剩余跌破5日均线次日开盘卖出"},
     {"key": "half_exit_low3", "name": "半仓止盈+前3日低点", "description": "半仓固定止盈，剩余跌破前3日最低收盘价清仓"},
+    {"key": "half_exit_do_t", "name": "半仓止盈+做T", "description": "半仓止盈后，利用获利资金做T（收阴买入，涨2.5%卖出），唐奇安下轨破位清仓"},
     {"key": "turtle", "name": "经典海龟交易", "description": "ATR(20)，2×ATR止损，0.5×ATR加仓（最多4仓），10日低点出场，1%风险仓位"},
 ]
 
@@ -306,6 +361,190 @@ async def delete_history(backtest_id: int):
         if not r:
             raise HTTPException(status_code=404, detail="回测记录不存在")
         session.delete(r)
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"删除失败: {e}")
+    finally:
+        session.close()
+
+
+# ---------- 组合回测 ----------
+
+@router.post("/portfolio/run", response_model=PortfolioBacktestResponse)
+async def run_portfolio_backtest(req: PortfolioBacktestRequest):
+    """运行多股票组合回测"""
+    if not req.codes:
+        raise HTTPException(status_code=400, detail="候选股票池不能为空")
+    if len(set(req.codes)) != len(req.codes):
+        raise HTTPException(status_code=400, detail="候选股票池不能有重复代码")
+
+    end_date = req.end_date or datetime.now().strftime("%Y-%m-%d")
+
+    # 组合模式只支持常用策略
+    if req.exit_strategy not in PORTFOLIO_STRATEGIES:
+        supported = ", ".join(sorted(PORTFOLIO_STRATEGIES))
+        raise HTTPException(
+            status_code=400,
+            detail=f"组合回测不支持该出场策略 '{req.exit_strategy}'，仅支持: {supported}",
+        )
+
+    try:
+        result = portfolio_backtest(
+            codes=req.codes,
+            start_date=req.start_date,
+            end_date=end_date,
+            initial_capital=req.initial_capital,
+            max_positions=req.max_positions,
+            exit_strategy=req.exit_strategy,
+            tp_multiplier=req.tp_multiplier,
+            trailing_atr_k=req.trailing_atr_k,
+            half_exit_pct=req.half_exit_pct,
+            score_config=req.score_config,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"组合回测执行失败: {e}")
+
+    return PortfolioBacktestResponse(
+        portfolio_stats=BacktestStats(**result["portfolio_stats"]),
+        overall_equity=[EquityPoint(**e) for e in result["overall_equity"]],
+        stock_results=[
+            StockResult(
+                code=sr["code"],
+                name=sr["name"],
+                trades=[TradeResult(**t) for t in sr["trades"]],
+                equity_curve=[EquityPoint(**e) for e in sr["equity_curve"]],
+                stats=BacktestStats(**sr["stats"]),
+            )
+            for sr in result["stock_results"]
+        ],
+    )
+
+
+# ---------- 评分配置 ----------
+
+@router.get("/score-config", response_model=ScoreConfigResponse)
+async def get_score_config_route():
+    """获取评分配置"""
+    dims = get_score_config()
+    return ScoreConfigResponse(
+        dimensions=[ScoreDimension(**d) for d in dims]
+    )
+
+
+@router.post("/score-config", response_model=ScoreConfigResponse)
+async def update_score_config_route(dimensions: List[ScoreDimension]):
+    """更新评分配置（持久化到 JSON 文件）"""
+    saved = save_score_config([d.model_dump() for d in dimensions])
+    return ScoreConfigResponse(
+        dimensions=[ScoreDimension(**d) for d in saved]
+    )
+
+
+# ---------- 候选股票池 ----------
+
+@router.get("/pools", response_model=PortfolioPoolListResponse)
+async def list_pools():
+    """获取候选股票池列表"""
+    session: Session = db.get_session()
+    try:
+        rows = session.query(BacktestPortfolioPoolORM).order_by(
+            BacktestPortfolioPoolORM.updated_at.desc()
+        ).all()
+        items = []
+        for r in rows:
+            codes = json.loads(r.codes_json or "[]")
+            items.append(PortfolioPool(
+                id=r.id,
+                name=r.name,
+                codes=codes,
+                code_names=_batch_get_stock_names(codes),
+                created_at=r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
+            ))
+        return PortfolioPoolListResponse(items=items)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询失败: {e}")
+    finally:
+        session.close()
+
+
+@router.post("/pools", response_model=PortfolioPool)
+async def create_pool(req: PortfolioPoolCreate):
+    """创建候选股票池"""
+    session: Session = db.get_session()
+    try:
+        pool = BacktestPortfolioPoolORM(
+            name=req.name,
+            codes_json=json.dumps(req.codes, ensure_ascii=False),
+        )
+        session.add(pool)
+        session.commit()
+        session.refresh(pool)
+        codes = json.loads(pool.codes_json or "[]")
+        return PortfolioPool(
+            id=pool.id,
+            name=pool.name,
+            codes=codes,
+            code_names=_batch_get_stock_names(codes),
+            created_at=pool.created_at.strftime("%Y-%m-%d %H:%M") if pool.created_at else "",
+        )
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"创建失败: {e}")
+    finally:
+        session.close()
+
+
+@router.put("/pools/{pool_id}", response_model=PortfolioPool)
+async def update_pool(pool_id: int, req: PortfolioPoolUpdate):
+    """更新候选股票池"""
+    session: Session = db.get_session()
+    try:
+        pool = session.query(BacktestPortfolioPoolORM).filter(
+            BacktestPortfolioPoolORM.id == pool_id
+        ).first()
+        if not pool:
+            raise HTTPException(status_code=404, detail="候选池不存在")
+        if req.name is not None:
+            pool.name = req.name
+        if req.codes is not None:
+            pool.codes_json = json.dumps(req.codes, ensure_ascii=False)
+        session.commit()
+        session.refresh(pool)
+        codes = json.loads(pool.codes_json or "[]")
+        return PortfolioPool(
+            id=pool.id,
+            name=pool.name,
+            codes=codes,
+            code_names=_batch_get_stock_names(codes),
+            created_at=pool.created_at.strftime("%Y-%m-%d %H:%M") if pool.created_at else "",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"更新失败: {e}")
+    finally:
+        session.close()
+
+
+@router.delete("/pools/{pool_id}", status_code=204)
+async def delete_pool(pool_id: int):
+    """删除候选股票池"""
+    session: Session = db.get_session()
+    try:
+        pool = session.query(BacktestPortfolioPoolORM).filter(
+            BacktestPortfolioPoolORM.id == pool_id
+        ).first()
+        if not pool:
+            raise HTTPException(status_code=404, detail="候选池不存在")
+        session.delete(pool)
         session.commit()
     except HTTPException:
         raise

@@ -34,6 +34,7 @@ class ActionResult(BaseModel):
     success: bool
     message: str
     data: Optional[Any] = None
+    chart_lines: list = Field(default_factory=list, description="K线图画线规则")
 
 
 class TPSLListItem(BaseModel):

@@ -16,6 +16,7 @@ A股量化分析平台 — 统一交互式 CLI 入口
 """
 import json
 import os
+import signal
 import subprocess
 import sys
 
@@ -54,6 +55,7 @@ BACKEND_COMMANDS = [
         "label": "启动后端服务 (uvicorn --reload)",
         "cmd": ["python3", "-m", "uvicorn", "server.main:app", "--host", "::", "--port", "8000", "--reload"],
         "background": True,  # 后台运行，不阻塞
+        "port": 8000,        # 启动前自动杀掉占用该端口的旧进程
         "url": "http://localhost:8000",
     },
     {
@@ -100,9 +102,23 @@ SYSTEM_COMMANDS = [
 # 执行器
 # ============================================================
 
-def run_command(cmd: list[str], cwd: str | None = None, background: bool = False) -> None:
+def run_command(cmd: list[str], cwd: str | None = None, background: bool = False, port: int | None = None) -> None:
     """执行命令"""
     if background:
+        # 后台服务：先杀掉占用端口的旧进程
+        if port:
+            try:
+                result = subprocess.run(
+                    ["lsof", "-ti", f":{port}"],
+                    capture_output=True, text=True,
+                )
+                pids = [p for p in result.stdout.strip().split('\n') if p.strip()]
+                for pid in pids:
+                    os.kill(int(pid.strip()), signal.SIGKILL)
+                    print(f"  🔄 已终止旧进程 (PID: {pid.strip()})")
+            except Exception:
+                pass
+
         proc = subprocess.Popen(
             cmd,
             cwd=cwd or PROJECT_ROOT,
@@ -190,6 +206,7 @@ def page_backend():
         run_command(
             cmd_def["cmd"],
             background=cmd_def.get("background", False),
+            port=cmd_def.get("port"),
         )
         if cmd_def.get("url"):
             print(f"  🌐 {cmd_def['url']}")

@@ -73,11 +73,12 @@ def _get_index_component_codes() -> Set[str]:
 
 
 def search_stocks(keyword: str, limit: int = 20) -> List[dict]:
-    """搜索股票：按代码或名称模糊匹配"""
+    """搜索股票/ETF：按代码或名称模糊匹配"""
     session = db.get_session()
     try:
         pattern = f"%{keyword}%"
-        rows = (
+        # 查股票
+        stock_rows = (
             session.query(StockBasic)
             .filter(
                 (StockBasic.code.like(pattern))
@@ -86,10 +87,25 @@ def search_stocks(keyword: str, limit: int = 20) -> List[dict]:
             .limit(limit)
             .all()
         )
-        return [
+        results = [
             {"code": r.code, "name": r.股票简称 or "", "type": r.type}
-            for r in rows
+            for r in stock_rows
         ]
+        # 查 ETF（数量不足 limit 时补充）
+        remaining = limit - len(results)
+        if remaining > 0:
+            etf_rows = (
+                session.query(ETFBasic)
+                .filter(
+                    (ETFBasic.code.like(pattern))
+                    | (ETFBasic.name.like(pattern))
+                )
+                .limit(remaining)
+                .all()
+            )
+            for r in etf_rows:
+                results.append({"code": r.code, "name": r.name or "", "type": "etf"})
+        return results
     finally:
         session.close()
 

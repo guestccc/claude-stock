@@ -14,6 +14,12 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "a_stock.db")
 # baostock: 已不稳定（备用）
 DAILY_DATA_SOURCE = os.getenv("DAILY_DATA_SOURCE", "akshare")
 
+# ETF 日线数据源: "etf_eastmoney" | "etf_sina"
+# 可通过环境变量 ETF_DATA_SOURCE 覆盖
+# etf_eastmoney: 东方财富前复权，涨跌幅准确（自动处理份额拆分/合并），字段全（限流风险）
+# etf_sina: 新浪财经，稳定无限流，但涨跌幅在拆分日不准确（默认）
+ETF_DATA_SOURCE = os.getenv("ETF_DATA_SOURCE", "etf_sina")
+
 # 妙想 API Key（优先从环境变量 MX_APIKEY 读取）
 MX_APIKEY = os.getenv("MX_APIKEY", "")
 

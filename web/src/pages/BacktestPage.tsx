@@ -12,6 +12,10 @@ import {
   Col,
   Space,
   App,
+  Collapse,
+  Switch,
+  Slider,
+  Tag,
 } from 'antd'
 import { PlayCircleOutlined, SaveOutlined, LeftOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -21,12 +25,23 @@ import {
   getRecentStocks,
   runBacktest,
   saveBacktest,
+  runPortfolioBacktest,
+  getScoreConfig,
+  updateScoreConfig,
+  getPortfolioPools,
+  createPortfolioPool,
+  updatePortfolioPool,
+  deletePortfolioPool,
   type ExitStrategyInfo,
   type BacktestResponse,
+  type PortfolioBacktestResponse,
+  type ScoreDimension,
+  type PortfolioPool,
 } from '../api/backtest'
 import { searchStocks, type StockInfo } from '../api/market'
 import { colors, fonts, changeColor, changeSignRaw } from '../theme/tokens'
 import BacktestResultView from '../components/backtest/BacktestResultView'
+import PortfolioResultView from '../components/backtest/PortfolioResultView'
 
 // ---------- 主组件 ----------
 export default function BacktestPage() {
@@ -281,6 +296,11 @@ export default function BacktestPage() {
             ),
           },
           {
+            key: 'portfolio',
+            label: '组合回测',
+            children: <PortfolioBacktestPanel strategies={strategies} />,
+          },
+          {
             key: 'history',
             label: '历史',
             children: <BacktestHistoryList />,
@@ -426,5 +446,429 @@ function BacktestHistoryList() {
         </div>
       )}
     </div>
+  )
+}
+
+// ---------- 组合回测子组件 ----------
+// 组合模式支持的出场策略（与后端 PORTFOLIO_STRATEGIES 对应）
+const PORTFOLIO_STRATEGY_KEYS = ['fixed', 'trailing', 'trailing_boll', 'boll_middle', 'ma5_exit', 'half_exit']
+
+// 评分预设：ETF 波动小、量能放大不明显，参数需要调低
+const SCORE_PRESETS: Record<string, { label: string; params: Record<string, Record<string, any>> }> = {
+  stock: {
+    label: '个股（默认）',
+    params: {},  // 空对象 = 用后端默认参数
+  },
+  etf: {
+    label: 'ETF',
+    params: {
+      breakout_strength: { optimal_min: 0.3, optimal_max: 1.5 },
+      volume_ratio: { optimal_min: 1.2 },
+      breakout_days: { optimal_min: 1, optimal_max: 2 },
+    },
+  },
+}
+
+function PortfolioBacktestPanel({ strategies }: { strategies: ExitStrategyInfo[] }) {
+  const { message } = App.useApp()
+
+  // 候选股票池
+  const [poolCodes, setPoolCodes] = useState<string[]>([])
+  const [poolOptions, setPoolOptions] = useState<StockInfo[]>([])
+  const [codeNameMap, setCodeNameMap] = useState<Record<string, string>>({})
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 持久化候选池
+  const [pools, setPools] = useState<PortfolioPool[]>([])
+  const [selectedPoolId, setSelectedPoolId] = useState<number | null>(null)
+  const [poolName, setPoolName] = useState('')
+  const [savingPool, setSavingPool] = useState(false)
+
+  // 参数
+  const [maxPositions, setMaxPositions] = useState(3)
+  const [startDate, setStartDate] = useState<Dayjs>(dayjs('2024-01-01'))
+  const [endDate, setEndDate] = useState<Dayjs>(dayjs())
+  const [capital, setCapital] = useState(100000)
+  const [strategy, setStrategy] = useState('fixed')
+  const [tpMultiplier, setTpMultiplier] = useState(2.0)
+  const [trailingAtrK, setTrailingAtrK] = useState(1.0)
+  const [halfExitPct, setHalfExitPct] = useState(50)
+
+  // 评分配置
+  const [scoreDims, setScoreDims] = useState<ScoreDimension[]>([])
+  const [scoreLoaded, setScoreLoaded] = useState(false)
+  const [scorePreset, setScorePreset] = useState<string>('stock')
+
+  // 状态
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<PortfolioBacktestResponse | null>(null)
+
+  // 组合模式只显示支持的策略
+  const portfolioStrategies = strategies.filter(s => PORTFOLIO_STRATEGY_KEYS.includes(s.key))
+
+  // 加载评分配置
+  useEffect(() => {
+    getScoreConfig().then(r => {
+      setScoreDims(r.dimensions)
+      setScoreLoaded(true)
+    }).catch(() => {})
+  }, [])
+
+  // 加载持久化候选池
+  const loadPools = async () => {
+    try {
+      const r = await getPortfolioPools()
+      setPools(r.items)
+    } catch { /* ignore */ }
+  }
+  useEffect(() => { loadPools() }, [])
+
+  // 选择候选池
+  const handleSelectPool = (id: number | null) => {
+    if (id == null) {
+      setSelectedPoolId(null)
+      setPoolName('')
+      return
+    }
+    const pool = pools.find(p => p.id === id)
+    if (pool) {
+      setSelectedPoolId(id)
+      setPoolCodes(pool.codes)
+      setPoolName(pool.name)
+      // 用后端返回的 code_names 填充 tag 名称映射
+      if (pool.code_names && Object.keys(pool.code_names).length > 0) {
+        setCodeNameMap(prev => ({ ...prev, ...pool.code_names }))
+      }
+    }
+  }
+
+  // 保存候选池
+  const handleSavePool = async () => {
+    if (poolCodes.length === 0) { message.error('候选池为空'); return }
+    const name = poolName.trim()
+    if (!name) { message.error('请输入候选池名称'); return }
+    setSavingPool(true)
+    try {
+      if (selectedPoolId) {
+        // 更新已有
+        await updatePortfolioPool(selectedPoolId, { name, codes: poolCodes })
+        message.success('候选池已更新')
+      } else {
+        // 新建
+        const pool = await createPortfolioPool({ name, codes: poolCodes })
+        setSelectedPoolId(pool.id)
+        message.success('候选池已保存')
+      }
+      await loadPools()
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || '保存失败')
+    } finally {
+      setSavingPool(false)
+    }
+  }
+
+  // 删除候选池
+  const handleDeletePool = async (id: number) => {
+    if (!confirm('确定删除该候选池？')) return
+    try {
+      await deletePortfolioPool(id)
+      if (selectedPoolId === id) {
+        setSelectedPoolId(null)
+        setPoolName('')
+        setPoolCodes([])
+      }
+      await loadPools()
+      message.success('已删除')
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || '删除失败')
+    }
+  }
+
+  // 股票搜索（用于候选池下拉）
+  const handlePoolSearch = (val: string) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (!val.trim()) { setPoolOptions([]); return }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const results = await searchStocks(val)
+        setPoolOptions(results.slice(0, 12))
+        setCodeNameMap(prev => {
+          const next = { ...prev }
+          results.forEach(r => { next[r.code] = r.name })
+          return next
+        })
+      } catch { setPoolOptions([]) }
+    }, 300)
+  }
+
+  // 修改评分维度
+  const handleDimChange = (key: string, field: 'weight' | 'enabled', value: number | boolean) => {
+    setScoreDims(dims => dims.map(d =>
+      d.key === key ? { ...d, [field]: value } : d
+    ))
+  }
+
+  // 保存评分配置
+  const handleSaveScore = async () => {
+    try {
+      const resp = await updateScoreConfig(scoreDims)
+      setScoreDims(resp.dimensions)
+      message.success('评分配置已保存')
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || '保存失败')
+    }
+  }
+
+  // 运行组合回测
+  const handleRun = async () => {
+    if (poolCodes.length === 0) { message.error('请选择候选股票'); return }
+    if (maxPositions < 1) { message.error('最大持仓数至少为 1'); return }
+    setRunning(true)
+    setResult(null)
+    try {
+      // 构建评分覆盖配置（权重 + 预设 params）
+      const presetParams = SCORE_PRESETS[scorePreset]?.params || {}
+      const scoreConfig: Record<string, any> = {}
+      scoreDims.forEach(d => {
+        scoreConfig[d.key] = {
+          weight: d.weight,
+          enabled: d.enabled,
+          ...(presetParams[d.key] || {}),  // 合并预设参数（如 optimal_min/optimal_max）
+        }
+      })
+
+      const resp = await runPortfolioBacktest({
+        codes: poolCodes,
+        start_date: startDate.format('YYYY-MM-DD'),
+        end_date: endDate.format('YYYY-MM-DD'),
+        initial_capital: capital,
+        max_positions: maxPositions,
+        exit_strategy: strategy,
+        tp_multiplier: tpMultiplier,
+        trailing_atr_k: trailingAtrK,
+        half_exit_pct: halfExitPct,
+        score_config: scoreConfig,
+      })
+      setResult(resp)
+      const ps = resp.portfolio_stats
+      message.success(`组合回测完成：${ps.num_trades} 笔交易，总收益 ${ps.total_return_pct > 0 ? '+' : ''}${ps.total_return_pct}%`)
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || e?.message || '组合回测失败')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const labelStyle: React.CSSProperties = {
+    marginBottom: 4,
+    fontSize: 11,
+    color: colors.textLabel,
+    fontFamily: fonts.mono,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+  }
+
+  return (
+    <>
+      {/* 配置面板 */}
+      <div style={{ background: colors.bgSecondary, borderRadius: 8, padding: 20, marginBottom: 16 }}>
+        <Row gutter={[16, 16]}>
+          {/* 候选池选择 + 保存 */}
+          <Col xs={24}>
+            <div style={labelStyle}>候选股票池</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <Select
+                value={selectedPoolId}
+                onChange={(v: number | null) => handleSelectPool(v)}
+                placeholder="选择已保存的候选池..."
+                style={{ flex: 1 }}
+                allowClear
+                options={pools.map(p => ({ value: p.id, label: p.name }))}
+              />
+              {selectedPoolId && (
+                <Button danger size="small" onClick={() => handleDeletePool(selectedPoolId)}>
+                  删除
+                </Button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <input
+                value={poolName}
+                onChange={e => setPoolName(e.target.value)}
+                placeholder="候选池名称（保存时用）"
+                style={{
+                  flex: 1,
+                  padding: '4px 11px',
+                  background: colors.bg,
+                  color: colors.textPrimary,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 4,
+                  fontSize: 13,
+                  fontFamily: fonts.mono,
+                  outline: 'none',
+                }}
+              />
+              <Button size="small" loading={savingPool} onClick={handleSavePool}>
+                {selectedPoolId ? '更新候选池' : '保存为新候选池'}
+              </Button>
+            </div>
+            <Select
+              mode="multiple"
+              value={poolCodes}
+              onChange={(vals: string[]) => {
+                setPoolCodes(vals)
+                if (selectedPoolId) setSelectedPoolId(null)
+              }}
+              onSearch={handlePoolSearch}
+              filterOption={false}
+              placeholder="输入代码或名称搜索并添加..."
+              style={{ width: '100%' }}
+              optionLabelProp="label"
+              options={poolOptions.map(r => ({
+                value: r.code,
+                label: `${r.code} ${r.name}`,
+              }))}
+              tagRender={(props) => {
+                const name = codeNameMap[props.value as string]
+                const label = name ? `${props.value} ${name}` : props.value
+                return (
+                  <Tag color="blue" closable onClose={props.onClose} style={{ marginRight: 3 }}>
+                    {label}
+                  </Tag>
+                )
+              }}
+            />
+            {poolCodes.length > 0 && (
+              <div style={{ fontSize: 11, color: colors.accent, fontFamily: fonts.mono, marginTop: 4 }}>
+                已选 {poolCodes.length} 只股票
+              </div>
+            )}
+          </Col>
+
+          {/* 最大持仓数 + 策略 */}
+          <Col xs={24} sm={12}>
+            <div style={labelStyle}>最大同时持仓数</div>
+            <InputNumber value={maxPositions} onChange={(v: number | null) => setMaxPositions(v ?? 3)} min={1} max={10} style={{ width: '100%' }} />
+          </Col>
+          <Col xs={24} sm={12}>
+            <div style={labelStyle}>出场策略</div>
+            <Select
+              value={strategy}
+              onChange={setStrategy}
+              options={portfolioStrategies.map(s => ({ value: s.key, label: s.name }))}
+              style={{ width: '100%' }}
+            />
+          </Col>
+
+          {/* 日期 */}
+          <Col xs={24} sm={12}>
+            <div style={labelStyle}>开始日期</div>
+            <DatePicker value={startDate} onChange={(v: Dayjs | null) => v && setStartDate(v)} style={{ width: '100%' }} />
+          </Col>
+          <Col xs={24} sm={12}>
+            <div style={labelStyle}>结束日期（默认今天）</div>
+            <DatePicker value={endDate} onChange={(v: Dayjs | null) => v && setEndDate(v)} style={{ width: '100%' }} />
+          </Col>
+
+          {/* 本金 + 止盈倍数 */}
+          <Col xs={24} sm={12}>
+            <div style={labelStyle}>初始本金（元）</div>
+            <InputNumber value={capital} onChange={(v: number | null) => setCapital(v ?? 100000)} min={1000} step={10000} style={{ width: '100%' }} />
+          </Col>
+          <Col xs={24} sm={12}>
+            <div style={labelStyle}>止盈倍数（ATR×N）</div>
+            <InputNumber value={tpMultiplier} onChange={(v: number | null) => setTpMultiplier(v ?? 2.0)} min={0.5} step={0.5} style={{ width: '100%' }} />
+          </Col>
+
+          {/* 跟踪止损 ATR 系数（trailing/trailing_boll/half_exit 时显示）*/}
+          {(strategy === 'trailing' || strategy === 'trailing_boll' || strategy === 'half_exit') && (
+            <Col xs={24} sm={12}>
+              <div style={labelStyle}>跟踪止损ATR系数</div>
+              <InputNumber value={trailingAtrK} onChange={(v: number | null) => setTrailingAtrK(v ?? 1.0)} min={0.1} step={0.1} style={{ width: '100%' }} />
+            </Col>
+          )}
+          {/* 半仓止盈比例（half_exit 时显示）*/}
+          {strategy === 'half_exit' && (
+            <Col xs={24} sm={12}>
+              <div style={labelStyle}>半仓止盈比例%</div>
+              <InputNumber value={halfExitPct} onChange={(v: number | null) => setHalfExitPct(v ?? 50)} min={10} max={100} step={10} style={{ width: '100%' }} />
+            </Col>
+          )}
+        </Row>
+
+        {/* 评分配置 */}
+        <Collapse
+          ghost
+          style={{ marginTop: 12 }}
+          items={[{
+            key: 'score',
+            label: <span style={{ fontSize: 13, fontFamily: fonts.mono, color: colors.accent }}>评分配置（可选，调整信号排序权重）</span>,
+            children: scoreLoaded && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                  <span style={{ fontSize: 11, color: colors.textLabel, fontFamily: fonts.mono }}>信号预设</span>
+                  <Select
+                    value={scorePreset}
+                    onChange={setScorePreset}
+                    size="small"
+                    style={{ width: 140 }}
+                    options={Object.entries(SCORE_PRESETS).map(([k, v]) => ({ value: k, label: v.label }))}
+                  />
+                  <span style={{ fontSize: 11, color: colors.textMuted, fontFamily: fonts.mono }}>
+                    {scorePreset === 'etf' ? 'ETF 波动小，突破参数已调低' : '使用默认个股参数'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: colors.textMuted, fontFamily: fonts.mono, marginBottom: 12 }}>
+                  启用的维度权重会归一化为百分比。关闭的维度不参与评分。
+                </div>
+                {scoreDims.map(d => (
+                  <div key={d.key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, padding: '4px 0' }}>
+                    <Switch size="small" checked={d.enabled} onChange={(v) => handleDimChange(d.key, 'enabled', v)} />
+                    <div style={{ width: 110, fontSize: 12, fontFamily: fonts.mono, color: d.enabled ? colors.textPrimary : colors.textMuted }}>
+                      {d.name}
+                    </div>
+                    <Slider
+                      min={0}
+                      max={50}
+                      step={5}
+                      value={d.weight}
+                      onChange={(v) => handleDimChange(d.key, 'weight', v)}
+                      style={{ flex: 1, margin: '0 8px' }}
+                      disabled={!d.enabled}
+                    />
+                    <div style={{ width: 40, textAlign: 'right', fontSize: 12, fontFamily: fonts.mono, color: colors.accent }}>
+                      {d.weight}
+                    </div>
+                  </div>
+                ))}
+                <Button size="small" onClick={handleSaveScore} style={{ marginTop: 8 }}>保存评分配置</Button>
+              </div>
+            ),
+          }]}
+        />
+
+        <Button
+          type="primary"
+          icon={<PlayCircleOutlined />}
+          onClick={handleRun}
+          loading={running}
+          disabled={running}
+          block
+          style={{ marginTop: 16, fontFamily: fonts.mono, fontWeight: 600 }}
+        >
+          {running ? '组合回测中...' : '运行组合回测'}
+        </Button>
+      </div>
+
+      {/* 结果展示 */}
+      {running && (
+        <div style={{ textAlign: 'center', padding: 24, color: colors.textMuted, fontFamily: fonts.mono }}>
+          组合回测计算中...
+        </div>
+      )}
+      {result && !running && (
+        <PortfolioResultView result={result} />
+      )}
+    </>
   )
 }
